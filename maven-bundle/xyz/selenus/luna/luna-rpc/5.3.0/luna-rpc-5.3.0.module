@@ -1,0 +1,136 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "xyz.selenus.luna",
+    "module": "luna-rpc",
+    "version": "5.3.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.9"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "xyz.selenus.luna",
+          "module": "luna-core",
+          "version": {
+            "requires": "5.3.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.3.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "luna-rpc-5.3.0.jar",
+          "url": "luna-rpc-5.3.0.jar",
+          "size": 261,
+          "sha512": "91d485eff6742571eb9b5b2c023def977a7537e66073062205cdf6c3c22d2dfe80a0d0dde59df7fd6a957972c6f54d2e1706527a11c41fc8d8eb57dfe4b00d12",
+          "sha256": "78ae4b66a0ddf617c792cc25f2bb1eff982a0f23a4f548fff292e22154a446a2",
+          "sha1": "0f24ef67ad78747ac1427c6bcd5c869f843bca92",
+          "md5": "66cdb72816281e78d6a566b29ddd8d18"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 17,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "xyz.selenus.luna",
+          "module": "luna-core",
+          "version": {
+            "requires": "5.3.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.3.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "luna-rpc-5.3.0.jar",
+          "url": "luna-rpc-5.3.0.jar",
+          "size": 261,
+          "sha512": "91d485eff6742571eb9b5b2c023def977a7537e66073062205cdf6c3c22d2dfe80a0d0dde59df7fd6a957972c6f54d2e1706527a11c41fc8d8eb57dfe4b00d12",
+          "sha256": "78ae4b66a0ddf617c792cc25f2bb1eff982a0f23a4f548fff292e22154a446a2",
+          "sha1": "0f24ef67ad78747ac1427c6bcd5c869f843bca92",
+          "md5": "66cdb72816281e78d6a566b29ddd8d18"
+        }
+      ]
+    },
+    {
+      "name": "javadocElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "javadoc",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "luna-rpc-5.3.0-javadoc.jar",
+          "url": "luna-rpc-5.3.0-javadoc.jar",
+          "size": 261,
+          "sha512": "91d485eff6742571eb9b5b2c023def977a7537e66073062205cdf6c3c22d2dfe80a0d0dde59df7fd6a957972c6f54d2e1706527a11c41fc8d8eb57dfe4b00d12",
+          "sha256": "78ae4b66a0ddf617c792cc25f2bb1eff982a0f23a4f548fff292e22154a446a2",
+          "sha1": "0f24ef67ad78747ac1427c6bcd5c869f843bca92",
+          "md5": "66cdb72816281e78d6a566b29ddd8d18"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "luna-rpc-5.3.0-sources.jar",
+          "url": "luna-rpc-5.3.0-sources.jar",
+          "size": 561,
+          "sha512": "07068bcfee0dd1b13ff3437ec642e178f8f3ac566571fae48c75c699ac7a1d072dbf57c7ff03820d06088a3dc2bcca2a7a15bef86c3c8cfaa5b734056873c54a",
+          "sha256": "c275763f021c8a3f8055a326937754cec2e9f8283dbe92bac38115025dd9a962",
+          "sha1": "fea475e48ad87e61b3d8b1c91eb6aa27ede61500",
+          "md5": "b2bc289c6201bc883269b7248534ad4e"
+        }
+      ]
+    }
+  ]
+}

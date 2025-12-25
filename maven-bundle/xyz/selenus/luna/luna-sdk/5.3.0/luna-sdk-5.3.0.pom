@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- This module was also published with a richer model, Gradle metadata,  -->
+  <!-- which should be used instead. Do not delete the following line which  -->
+  <!-- is to indicate to Gradle or any Gradle module metadata file consumer  -->
+  <!-- that they should prefer consuming it instead. -->
+  <!-- do_not_remove: published-with-gradle-metadata -->
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>xyz.selenus.luna</groupId>
+  <artifactId>luna-sdk</artifactId>
+  <version>5.3.0</version>
+  <name>LunaSDK</name>
+  <description>Complete Helius Solana SDK for Kotlin - All modules in one package</description>
+  <url>https://github.com/nicholasxjy/Helius-Selenus-Kotlin-LunaSDK</url>
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>selenus</id>
+      <name>Selenus Team</name>
+      <email>dev@selenus.com</email>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:git://github.com/nicholasxjy/Helius-Selenus-Kotlin-LunaSDK.git</connection>
+    <developerConnection>scm:git:ssh://github.com:nicholasxjy/Helius-Selenus-Kotlin-LunaSDK.git</developerConnection>
+    <url>https://github.com/nicholasxjy/Helius-Selenus-Kotlin-LunaSDK</url>
+  </scm>
+  <dependencies>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-core</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-rpc</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-das</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-webhooks</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-priority</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-enhanced-tx</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-analytics</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-innovations</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-privacy</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>xyz.selenus.luna</groupId>
+      <artifactId>luna-jupiter</artifactId>
+      <version>5.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+      <version>2.3.0</version>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+</project>

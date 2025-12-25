@@ -1,0 +1,1 @@
+export { ShieldedPatternApi } from './PrivacyApis';
