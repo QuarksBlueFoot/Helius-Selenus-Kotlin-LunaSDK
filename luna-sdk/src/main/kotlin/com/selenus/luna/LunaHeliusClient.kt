@@ -1020,19 +1020,83 @@ class LunaHeliusClient(
         }
 
         /**
-         * Create a smart transaction given a configuration.
-         * Note: This method is currently not supported by the Helius RPC and requires client-side implementation.
+         * Data class representing the optimization plan for a Smart Transaction.
          */
-        suspend fun createSmartTransaction(config: JsonObject): RpcResponse<JsonElement> {
-            return rpcCall("createSmartTransaction", config)
+        data class SmartTransactionPlan(
+            val computeUnits: Long,
+            val priorityFeeEstimate: Double
+        )
+
+        /**
+         * Calculates the optimal Compute Units and Priority Fee for a transaction.
+         * This corresponds to the "Build" and "Optimize" steps of a Smart Transaction.
+         *
+         * @param transaction The base64 encoded transaction (signed or unsigned).
+         * @return A plan containing the recommended CU limit (with margin) and priority fee.
+         */
+        suspend fun getSmartTransactionPlan(transaction: String): RpcResponse<SmartTransactionPlan> {
+            // 1. Simulate to get CUs
+            val simResponse = getComputeUnits(transaction)
+            val unitsConsumed = simResponse.result?.jsonPrimitive?.longOrNull
+                ?: return RpcResponse(error = RpcError(500, "Failed to simulate transaction for CUs"))
+            
+            // Add 10% margin
+            val safeUnits = kotlin.math.ceil(unitsConsumed * 1.1).toLong()
+
+            // 2. Get Priority Fee Estimate
+            val feeResponse = priority.getPriorityFeeEstimate(
+                transaction = transaction,
+                options = buildJsonObject { put("recommended", true) }
+            )
+            val feeEstimate = feeResponse.result?.jsonObject?.get("priorityFeeEstimate")?.jsonPrimitive?.doubleOrNull
+                ?: return RpcResponse(error = RpcError(500, "Failed to get priority fee estimate"))
+
+            return RpcResponse(result = SmartTransactionPlan(safeUnits, feeEstimate))
         }
 
         /**
-         * Build and send an optimized smart transaction in a single call.
-         * Note: This method is currently not supported by the Helius RPC and requires client-side implementation.
+         * Sends a "Smart Transaction" by implementing the Helius rebroadcasting and polling logic.
+         * 
+         * This method:
+         * 1. Sends the transaction.
+         * 2. Polls for confirmation.
+         * 3. If not confirmed within a short window, retries sending.
+         * 4. Repeats until the global timeout (60s) is reached.
+         *
+         * @param signedTransaction The fully signed, base64 encoded transaction.
+         * @param timeoutMs Total timeout in milliseconds (default 60000).
+         * @param retryDelayMs Delay between retries (default 5000).
          */
-        suspend fun sendSmartTransaction(config: JsonObject): RpcResponse<JsonElement> {
-            return rpcCall("sendSmartTransaction", config)
+        suspend fun sendSmartTransaction(
+            signedTransaction: String,
+            timeoutMs: Long = 60000,
+            retryDelayMs: Long = 5000
+        ): RpcResponse<JsonElement> {
+            val start = System.currentTimeMillis()
+            var lastError: Exception? = null
+
+            while (System.currentTimeMillis() - start < timeoutMs) {
+                try {
+                    // Send (skipPreflight is recommended for smart txs as we already simulated)
+                    val sendResponse = sendTransaction(signedTransaction)
+                    val signature = sendResponse.result?.jsonPrimitive?.content
+                    
+                    if (signature != null) {
+                        // Poll for confirmation
+                        try {
+                            // Use a shorter timeout for the inner poll to allow for rebroadcasting
+                            return pollTransactionConfirmation(signature, timeoutMs = retryDelayMs, intervalMs = 1000)
+                        } catch (e: Exception) {
+                            // Polling timed out, loop will retry sending
+                        }
+                    }
+                } catch (e: Exception) {
+                    lastError = e
+                    // Continue to retry
+                }
+                delay(1000) // Small delay before next loop iteration
+            }
+            throw Exception("Smart Transaction timed out. Last error: ${lastError?.message}")
         }
 
         /**

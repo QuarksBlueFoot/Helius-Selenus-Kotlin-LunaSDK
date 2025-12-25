@@ -93,4 +93,69 @@ class ExampleTest {
             println("--- End Sender Tip Floor Example ---")
         }
     }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "HELIUS_API_KEY", matches = ".+")
+    fun `Example - Standard RPC (Get Balance)`() {
+        runBlocking {
+            println("--- Starting Get Balance Example ---")
+            val wallet = "86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY" // Helius official wallet
+            try {
+                val response = client.solana.getBalance(wallet)
+                println("Balance for $wallet: ${response.result}")
+            } catch (e: Exception) {
+                println("Exception: ${e.message}")
+            }
+            println("--- End Get Balance Example ---")
+        }
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "HELIUS_API_KEY", matches = ".+")
+    fun `Example - Enhanced RPC (Get Transactions)`() {
+        runBlocking {
+            println("--- Starting Enhanced Transactions Example ---")
+            val wallet = "86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY"
+            try {
+                val response = client.rpc.getTransactionsForAddress(
+                    address = wallet,
+                    limit = 5
+                )
+                println("Found ${response.result?.jsonArray?.size} transactions")
+            } catch (e: Exception) {
+                println("Exception: ${e.message}")
+            }
+            println("--- End Enhanced Transactions Example ---")
+        }
+    }
+
+    @Test
+    fun `Example - LaserStream Config`() {
+        println("--- Starting LaserStream Config Example ---")
+        val endpoint = client.laser.getDefaultEndpoint()
+        val token = client.laser.getAuthToken()
+        println("LaserStream Endpoint: $endpoint")
+        println("LaserStream Token: ${token.take(5)}...")
+        println("--- End LaserStream Config Example ---")
+    }
+}
+
+/**
+ * Main entry point for running examples directly.
+ */
+fun main() = runBlocking {
+    println("Running LunaSDK Examples...")
+    val test = ExampleTest()
+    
+    // Manually invoke examples (ignoring JUnit annotations for main execution)
+    // Note: Ensure HELIUS_API_KEY is set or hardcoded in ExampleTest
+    
+    test.`Example - Get Asset (DAS)`()
+    test.`Example - Get Priority Fee Estimate`()
+    test.`Example - Get Sender Tip Floor`()
+    test.`Example - Standard RPC (Get Balance)`()
+    test.`Example - Enhanced RPC (Get Transactions)`()
+    test.`Example - LaserStream Config`()
+    
+    println("All examples finished.")
 }

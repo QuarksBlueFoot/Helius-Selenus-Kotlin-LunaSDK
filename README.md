@@ -232,8 +232,8 @@ are grouped under `LunaHeliusClient.tx`.
 | `broadcastTransaction(serializedTransaction)` | Broadcast a fully signed transaction and poll for confirmation. |
 | `sendTransaction(transaction, encoding?, rebateAddress?)` | Wrapper around `sendTransaction` RPC call with optional encoding and rebate address for backrun rebates. |
 | `pollTransactionConfirmation(signature)` | Poll until a transaction is confirmed. |
-| `createSmartTransaction(config)` | Build a “smart transaction” with automatic fee payer assignment and compute budgeting. (Note: Requires client-side implementation, currently placeholder) |
-| `sendSmartTransaction(config)` | Build and send an optimized smart transaction. (Note: Requires client-side implementation, currently placeholder) |
+| `getSmartTransactionPlan(transaction)` | Get optimal Compute Units and Priority Fee for building a Smart Transaction. |
+| `sendSmartTransaction(signedTransaction)` | Send a transaction with Helius-recommended polling and rebroadcasting logic. |
 | `sendTransactionWithSender(transaction, region?, swqosOnly?)` | Ultra-low-latency transaction submission using Helius Sender. |
 | `getSenderTipFloor()` | Get the current Jito tip floor (75th percentile). |
 
@@ -444,9 +444,8 @@ See the [Helius LaserStream Documentation](https://docs.helius.dev/laserstream) 
 
 ## Contributing
 
-Contributions are welcome!  If you notice missing endpoints, inaccurate
-documentation or wish to add LaserStream support, feel free to open a pull
-request.
+Contributions are welcome!  If you notice missing endpoints or inaccurate
+documentation, feel free to open a pull request.
 
 ## Author
 
