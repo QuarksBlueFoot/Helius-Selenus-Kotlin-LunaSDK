@@ -96,7 +96,7 @@ To use the published library:
 
 ```kotlin
 dependencies {
-    implementation("xyz.selenus:luna-sdk:1.0.0")
+    implementation("xyz.selenus:luna-sdk:1.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
