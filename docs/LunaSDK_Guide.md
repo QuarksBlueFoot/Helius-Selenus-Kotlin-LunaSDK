@@ -24,11 +24,25 @@ This guide provides a detailed overview of the **LunaSDK** for Helius, covering 
 
 ## Installation
 
+### Option 1: Local Module (Recommended for development)
+
 Add the following to your module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation(project(":luna-sdk")) // Or the published artifact
+    implementation(project(":luna-sdk"))
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+}
+```
+
+### Option 2: Maven Central
+
+If you are using the published version:
+
+```kotlin
+dependencies {
+    implementation("xyz.selenus:luna-sdk:1.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
@@ -464,6 +478,144 @@ val endpoint = client.laser.getDefaultEndpoint()
 val token = client.laser.getAuthToken()
 // Pass 'token' as 'x-token' metadata header
 ```
+
+---
+
+## Niche & Composite API
+
+Access via `client.niche`.
+
+This namespace provides high-level, composite methods that combine multiple RPC calls into single operations. These are designed for specific use cases like gaming, dashboards, and deep analysis.
+
+### Methods
+
+*   **`getWalletPortfolio(address)`**: Returns a complete snapshot of a wallet, including SOL balance and all DAS assets.
+*   **`getTokenDeepDive(mint)`**: Fetches metadata, supply, and largest accounts for a token in one call.
+*   **`verifyGameAccess(address, minSol, collection, mint)`**: Verifies if a user meets specific criteria (balance + asset ownership) to access a feature.
+*   **`getAllAssetsByOwner(address, maxPages)`**: Recursively fetches **all** assets for a wallet, handling pagination automatically.
+*   **`getAllAssetsByGroup(groupKey, groupValue, maxPages)`**: Recursively fetches **all** assets for a group (e.g. Collection), handling pagination automatically.
+*   **`getTPS()`**: Calculates the current network Transactions Per Second (TPS).
+
+### Example
+
+```kotlin
+// 1. Get full portfolio
+val portfolio = client.niche.getWalletPortfolio("Wallet_Address").result
+println("SOL: ${portfolio?.solBalance}")
+println("Assets: ${portfolio?.assets}")
+
+// 2. Verify Game Access
+val access = client.niche.verifyGameAccess(
+    address = "User_Wallet",
+    minSolBalance = 0.01,
+    requiredCollectionAddress = "Collection_Address"
+).result
+
+if (access?.hasAccess == true) {
+    println("Welcome to the game!")
+} else {
+    println("Access Denied: ${access?.reason}")
+}
+
+// 3. Get ALL assets (auto-pagination)
+val allAssets = client.niche.getAllAssetsByOwner("Wallet_Address").result
+println("Total Assets: ${allAssets?.size}")
+
+// 4. Get TPS
+val tps = client.niche.getTPS().result
+println("Current TPS: $tps")
+```
+
+---
+
+## Solana Name Service (SNS)
+
+Access via `client.sns`.
+
+Helper methods for interacting with `.sol` domains.
+
+### Methods
+
+*   **`getDomains(owner)`**: Returns a list of all `.sol` domains owned by the wallet.
+*   **`getFavoriteDomain(owner)`**: Returns the primary domain name for the wallet (currently returns the first found).
+
+### Example
+
+```kotlin
+val domains = client.sns.getDomains("Wallet_Address").result
+domains?.forEach { println("Domain: $it") }
+```
+
+---
+
+## Memo API
+
+Access via `client.memo`.
+
+Helper methods for extracting memos from transactions.
+
+### Methods
+
+*   **`getMemosForTransaction(signature)`**: Fetches a transaction and extracts any SPL Memo instructions.
+
+### Example
+
+```kotlin
+val memos = client.memo.getMemosForTransaction("Signature_String").result
+memos?.forEach { println("Memo: $it") }
+```
+
+---
+
+## Mobile & Android Utilities
+
+Access via `client.mobile`.
+
+Features designed to simplify Solana mobile development.
+
+### Methods
+
+*   **`generatePaymentLink(recipient, amount, label, message, memo)`**: Generates a standard `solana:` URI for deep linking or QR codes.
+*   **`parsePaymentLink(uri)`**: Parses a `solana:` URI into a map of parameters.
+*   **`isValidAddress(address)`**: Validates if a string is a valid Solana address format (regex check).
+*   **`getAssetLite(assetId)`**: Fetches a lightweight version of an asset (ID, Name, Image URL only) to save bandwidth and parsing time in list views.
+
+### Example
+
+```kotlin
+// Generate a payment link
+val link = client.mobile.generatePaymentLink(
+    recipient = "Wallet_Address",
+    amount = 0.1,
+    label = "Coffee",
+    message = "Thanks for the coffee!"
+)
+println("Deep Link: $link")
+
+// Parse a link
+val params = client.mobile.parsePaymentLink(link)
+println("Recipient: ${params["recipient"]}")
+
+// Validate Address
+if (client.mobile.isValidAddress("Wallet_Address")) {
+    println("Valid Address")
+}
+
+// Get lite asset for RecyclerView
+val liteAsset = client.mobile.getAssetLite("Asset_ID").result
+println("Image URL: ${liteAsset?.get("image")}")
+```
+
+---
+
+## Webhook Verification
+
+To verify webhook signatures from Helius (Ed25519), you must use a cryptographic library as this SDK does not include one to keep dependencies light.
+
+**Steps:**
+1.  Extract the `signature` header from the incoming POST request.
+2.  Get the raw request body as a string/bytes.
+3.  Use a library like Bouncy Castle or TweetNacl to verify the signature against the body using the Helius Public Key.
 
 ---
 

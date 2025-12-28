@@ -319,6 +319,48 @@ object FeatureRegistry {
             FeatureDemo("Get Health", "Standard RPC", "Get node health") { client, log ->
                 val health = client.rpcCall("getHealth", JsonArray(emptyList()))
                 log("Health: ${health.result}")
+            },
+
+            // --- Niche API ---
+            FeatureDemo("Get Wallet Portfolio", "Niche", "Get SOL + Assets") { client, log ->
+                val portfolio = client.niche.getWalletPortfolio("86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY")
+                log("SOL: ${portfolio.result?.solBalance}\nAssets: ${portfolio.result?.assets?.jsonObject?.get("total")}")
+            },
+            FeatureDemo("Get TPS", "Niche", "Get Network TPS") { client, log ->
+                val tps = client.niche.getTPS()
+                log("Current TPS: ${tps.result}")
+            },
+            FeatureDemo("Verify Game Access", "Niche", "Check access") { client, log ->
+                val access = client.niche.verifyGameAccess("86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY", minSolBalance = 0.001)
+                log("Access: ${access.result?.hasAccess}\nReason: ${access.result?.reason}")
+            },
+
+            // --- SNS API ---
+            FeatureDemo("Get Domains", "SNS", "Get .sol domains") { client, log ->
+                val domains = client.sns.getDomains("86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY")
+                log("Domains: ${domains.result?.size}")
+            },
+
+            // --- Mobile API ---
+            FeatureDemo("Generate Payment Link", "Mobile", "Create Solana Pay link") { client, log ->
+                val link = client.mobile.generatePaymentLink("86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY", 1.5, "Coffee")
+                log("Link: $link")
+            },
+            FeatureDemo("Parse Payment Link", "Mobile", "Parse Solana Pay link") { client, log ->
+                val link = "solana:86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY?amount=1.5&label=Coffee"
+                val params = client.mobile.parsePaymentLink(link)
+                log("Recipient: ${params["recipient"]}\nAmount: ${params["amount"]}")
+            },
+            FeatureDemo("Get Asset Lite", "Mobile", "Get lightweight asset") { client, log ->
+                val lite = client.mobile.getAssetLite("F9Lw3ki3hJ7PF9HQXsBzoY8GyE6sPoEZZdXJBsTTD2rk")
+                log("Name: ${lite.result?.get("name")}\nImage: ${lite.result?.get("image")}")
+            },
+
+            // --- Memo API ---
+            FeatureDemo("Get Memos", "Memo", "Get transaction memos") { client, log ->
+                // Example TX with memo (replace with real one if needed)
+                val memos = client.memo.getMemosForTransaction("45pY88K2...Signature...") 
+                log("Memos Found: ${memos.result?.size ?: 0}")
             }
         )
     }

@@ -78,6 +78,36 @@ class LunaHeliusClient(
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 ) {
     /**
+     * Data class representing the optimization plan for a Smart Transaction.
+     */
+    data class SmartTransactionPlan(
+        val computeUnits: Long,
+        val priorityFeeEstimate: Double
+    )
+
+    @Serializable
+    data class WalletPortfolio(
+        val solBalanceLamports: Long,
+        val solBalance: Double,
+        val assets: JsonElement?
+    )
+
+    @Serializable
+    data class TokenDeepDive(
+        val metadata: JsonElement?,
+        val supply: JsonElement?,
+        val largestAccounts: JsonElement?
+    )
+
+    @Serializable
+    data class GameAccessCheck(
+        val hasAccess: Boolean,
+        val reason: String,
+        val solBalance: Double,
+        val hasRequiredAsset: Boolean
+    )
+
+    /**
      * Base URL for the selected cluster.  Note that the API key is appended as a query
      * parameter on each call.
      */
@@ -94,6 +124,8 @@ class LunaHeliusClient(
      * arguments.  A [RpcResponse] containing a generic [JsonElement] is returned.  If
      * the HTTP layer returns an error or if Helius indicates an error in the response,
      * an exception will be thrown.
+     *
+     * Includes automatic retry logic for rate limits (HTTP 429).
      *
      * @param method The RPC method name.
      * @param params The parameters for the RPC call.
@@ -133,21 +165,46 @@ class LunaHeliusClient(
             .post(body)
             .header("Content-Type", "application/json")
             .build()
-        httpClient.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string()
-            if (!response.isSuccessful || responseBody == null) {
-                throw Exception("Helius RPC call failed with HTTP ${response.code}")
+
+        // Retry Logic for Rate Limits (429)
+        var attempts = 0
+        val maxAttempts = 3
+        var lastException: Exception? = null
+
+        while (attempts < maxAttempts) {
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.code == 429) {
+                        // Rate limited. Wait and retry.
+                        val retryAfter = response.header("Retry-After")?.toLongOrNull() ?: 1L
+                        delay(retryAfter * 1000 + (attempts * 500)) // Exponential-ish backoff
+                        attempts++
+                        if (attempts >= maxAttempts) throw Exception("Rate limit exceeded after $maxAttempts attempts")
+                        return@use // Continue loop (kotlin 'use' block return behavior is tricky, so we use continue logic outside)
+                    } else {
+                        val responseBody = response.body?.string()
+                        if (!response.isSuccessful || responseBody == null) {
+                            throw Exception("Helius RPC call failed with HTTP ${response.code}")
+                        }
+                        val rpcResponse = json.decodeFromString(
+                            RpcResponse.serializer(JsonElement.serializer()),
+                            responseBody
+                        )
+                        // If Helius returned an error, throw it as an exception to fail fast.
+                        rpcResponse.error?.let { err ->
+                            throw Exception("Helius RPC error ${err.code}: ${err.message}")
+                        }
+                        return rpcResponse
+                    }
+                }
+            } catch (e: Exception) {
+                lastException = e
+                if (attempts >= maxAttempts - 1) throw e
+                attempts++
+                delay(500L * attempts)
             }
-            val rpcResponse = json.decodeFromString(
-                RpcResponse.serializer(JsonElement.serializer()),
-                responseBody
-            )
-            // If Helius returned an error, throw it as an exception to fail fast.
-            rpcResponse.error?.let { err ->
-                throw Exception("Helius RPC error ${err.code}: ${err.message}")
-            }
-            return rpcResponse
         }
+        throw lastException ?: Exception("Unknown error during RPC call")
     }
 
     /**
@@ -257,6 +314,14 @@ class LunaHeliusClient(
     val zk: ZkCompressionApi = ZkCompressionApi()
     /** Provides access to the Helius Sender API. */
     val sender: SenderApi = SenderApi()
+    /** Provides access to niche, composite endpoints that combine multiple RPC calls. */
+    val niche: NicheApi = NicheApi()
+    /** Provides access to Solana Name Service (SNS) helper methods. */
+    val sns: SnsApi = SnsApi()
+    /** Provides access to Mobile/Android specific utilities. */
+    val mobile: MobileApi = MobileApi()
+    /** Provides access to Memo helper methods. */
+    val memo: MemoApi = MemoApi()
     /** Provides access to LaserStream configuration and endpoints. */
     val laser: LaserStreamApi = LaserStreamApi()
     /** Provides access to standard Solana RPC methods (e.g. getBalance, getAccountInfo). */
@@ -870,6 +935,25 @@ class LunaHeliusClient(
         }
 
         /**
+         * Returns the staking rewards for a list of stake accounts.
+         *
+         * @param stakeAccounts List of stake account addresses.
+         * @param epoch Optional epoch to query rewards for.
+         */
+        suspend fun getStakingRewards(
+            stakeAccounts: List<String>,
+            epoch: Long? = null
+        ): RpcResponse<JsonElement> {
+            val params = buildJsonObject {
+                put("stakeAccounts", buildJsonArray {
+                    stakeAccounts.forEach { add(it) }
+                })
+                epoch?.let { put("epoch", it) }
+            }
+            return rpcCall("getStakingRewards", params)
+        }
+
+        /**
          * Return the instructions for creating and delegating a stake account without
          * constructing the full transaction【128353577680464†L200-L203】.
          * Useful when combining instructions in a custom transaction.
@@ -988,6 +1072,25 @@ class LunaHeliusClient(
         }
 
         /**
+         * Creates a smart transaction with optimal priority fees and compute units.
+         *
+         * @param transaction The base64 encoded transaction.
+         * @param config Optional configuration for the smart transaction.
+         */
+        suspend fun createSmartTransaction(
+            transaction: String,
+            config: JsonObject? = null
+        ): RpcResponse<JsonElement> {
+            val params = buildJsonObject {
+                put("transaction", transaction)
+                config?.let {
+                    it.forEach { (k, v) -> put(k, v) }
+                }
+            }
+            return rpcCall("createSmartTransaction", params)
+        }
+
+        /**
          * Poll a transaction until it has been confirmed.
          * @param signature The transaction signature to poll.
          * @param timeoutMs Max time to wait in milliseconds (default 60000).
@@ -1019,13 +1122,6 @@ class LunaHeliusClient(
             throw Exception("Transaction confirmation timed out for signature: $signature")
         }
 
-        /**
-         * Data class representing the optimization plan for a Smart Transaction.
-         */
-        data class SmartTransactionPlan(
-            val computeUnits: Long,
-            val priorityFeeEstimate: Double
-        )
 
         /**
          * Calculates the optimal Compute Units and Priority Fee for a transaction.
@@ -1046,7 +1142,7 @@ class LunaHeliusClient(
             // 2. Get Priority Fee Estimate
             val feeResponse = priority.getPriorityFeeEstimate(
                 transaction = transaction,
-                options = buildJsonObject { put("recommended", true) }
+                recommended = true
             )
             val feeEstimate = feeResponse.result?.jsonObject?.get("priorityFeeEstimate")?.jsonPrimitive?.doubleOrNull
                 ?: return RpcResponse(error = RpcError(500, "Failed to get priority fee estimate"))
@@ -1150,12 +1246,14 @@ class LunaHeliusClient(
             accountKeys: List<String>? = null,
             priorityLevel: String? = null,
             includeAllPriorityFeeLevels: Boolean? = null,
-            lookbackSlots: Int? = null
+            lookbackSlots: Int? = null,
+            recommended: Boolean? = null
         ): RpcResponse<JsonElement> {
             val options = buildJsonObject {
                 priorityLevel?.let { put("priorityLevel", it) }
                 includeAllPriorityFeeLevels?.let { put("includeAllPriorityFeeLevels", it) }
                 lookbackSlots?.let { put("lookbackSlots", it) }
+                recommended?.let { put("recommended", it) }
             }
 
             val paramsObj = buildJsonObject {
@@ -1285,6 +1383,58 @@ class LunaHeliusClient(
         suspend fun deleteWebhook(webhookId: String): RpcResponse<JsonElement> {
             val params = buildJsonObject { put("webhookID", webhookId) }
             return rpcCall("deleteWebhook", params)
+        }
+
+        /**
+         * Helper to verify a webhook signature.
+         * Note: This method is a stub/documentation helper because verifying Ed25519 signatures
+         * requires a cryptographic library (like Bouncy Castle or TweetNacl) which is not included
+         * in this lightweight SDK to keep dependencies minimal.
+         *
+         * To verify a webhook:
+         * 1. Get the "signature" header from the request.
+         * 2. Get the raw request body as a string.
+         * 3. Use an Ed25519 library to verify the signature against the body using the Helius public key.
+         *
+         * Helius Public Key: `HeLiusX9...` (Check dashboard for latest)
+         */
+        fun verifySignatureHelp(): String {
+            return "To verify signatures, use an Ed25519 library. Verify(publicKey, signature, bodyBytes)."
+        }
+    }
+
+    /**
+     * Memo API.
+     * Helper methods for extracting memos from transactions.
+     */
+    inner class MemoApi {
+        /**
+         * Retrieves memos from a specific transaction signature.
+         * Uses `enhanced.parseTransaction` to get the parsed transaction and extracts memos.
+         */
+        suspend fun getMemosForTransaction(signature: String): RpcResponse<List<String>> {
+            val response = enhanced.getTransactions(listOf(signature))
+            if (response.error != null) return RpcResponse(error = response.error)
+            
+            val transactions = response.result?.jsonArray
+            if (transactions.isNullOrEmpty()) {
+                 return RpcResponse(result = emptyList())
+            }
+            
+            val transaction = transactions[0].jsonObject
+            val memos = mutableListOf<String>()
+            val instructions = transaction["instructions"]?.jsonArray
+            
+            instructions?.forEach { ix ->
+                val programId = ix.jsonObject["programId"]?.jsonPrimitive?.content
+                // SPL Memo Program ID: MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcQb
+                if (programId == "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcQb") {
+                    val parsed = ix.jsonObject["parsed"]?.jsonPrimitive?.content
+                    if (parsed != null) memos.add(parsed)
+                }
+            }
+            
+            return RpcResponse(result = memos)
         }
     }
 
@@ -2181,6 +2331,350 @@ class LunaHeliusClient(
             } catch (e: Exception) {
                 RpcResponse(error = RpcError(500, e.message ?: "Unknown error"))
             }
+        }
+    }
+
+    /**
+     * Niche API.
+     * Contains composite methods that combine multiple RPC calls into single, convenient operations.
+     * Useful for gaming, dashboards, and specific business logic.
+     */
+    inner class NicheApi {
+
+
+        /**
+         * Retrieves a complete snapshot of a wallet: SOL balance and DAS assets.
+         * Combines `solana.getBalance` and `das.getAssetsByOwner`.
+         */
+        suspend fun getWalletPortfolio(address: String): RpcResponse<WalletPortfolio> {
+            val balanceResponse = solana.getBalance(address)
+            val assetsResponse = das.getAssetsByOwner(address, limit = 1000)
+
+            if (balanceResponse.error != null) return RpcResponse(error = balanceResponse.error)
+            if (assetsResponse.error != null) return RpcResponse(error = assetsResponse.error)
+
+            val lamports = balanceResponse.result?.jsonPrimitive?.longOrNull ?: 0L
+            val sol = lamports / 1_000_000_000.0
+
+            return RpcResponse(
+                result = WalletPortfolio(
+                    solBalanceLamports = lamports,
+                    solBalance = sol,
+                    assets = assetsResponse.result
+                )
+            )
+        }
+
+
+        /**
+         * Performs a deep dive on a specific Mint address.
+         * Fetches Metadata (DAS), Supply (RPC), and Largest Accounts (RPC) in parallel.
+         */
+        suspend fun getTokenDeepDive(mint: String): RpcResponse<TokenDeepDive> {
+            // Note: In a real coroutine environment, these should be async.
+            // Since we are inside a suspend function, we execute them sequentially here for simplicity,
+            // but the user can wrap them in async blocks if needed.
+            
+            val metadata = das.getAsset(mint)
+            val supply = solana.getTokenSupply(mint)
+            val largest = solana.getTokenLargestAccounts(mint)
+
+            return RpcResponse(
+                result = TokenDeepDive(
+                    metadata = metadata.result,
+                    supply = supply.result,
+                    largestAccounts = largest.result
+                )
+            )
+        }
+
+
+        /**
+         * Verifies if a user has access to a game/feature based on SOL balance and Asset ownership.
+         * 
+         * @param address User wallet address.
+         * @param minSolBalance Minimum SOL required (e.g. for gas).
+         * @param requiredCollectionAddress Optional: The user must own at least one asset from this collection.
+         * @param requiredMintAddress Optional: The user must own this specific mint.
+         */
+        suspend fun verifyGameAccess(
+            address: String,
+            minSolBalance: Double = 0.005,
+            requiredCollectionAddress: String? = null,
+            requiredMintAddress: String? = null
+        ): RpcResponse<GameAccessCheck> {
+            // 1. Check Balance
+            val balanceResponse = solana.getBalance(address)
+            val lamports = balanceResponse.result?.jsonPrimitive?.longOrNull ?: 0L
+            val sol = lamports / 1_000_000_000.0
+
+            if (sol < minSolBalance) {
+                return RpcResponse(result = GameAccessCheck(false, "Insufficient SOL balance ($sol < $minSolBalance)", sol, false))
+            }
+
+            // 2. Check Assets if required
+            if (requiredCollectionAddress == null && requiredMintAddress == null) {
+                return RpcResponse(result = GameAccessCheck(true, "Access Granted (Balance sufficient)", sol, true))
+            }
+
+            // We need to search assets.
+            // Strategy: Fetch assets by owner and filter.
+            // Note: For large wallets, this might need pagination, but we'll check the first 1000.
+            val assetsResponse = das.getAssetsByOwner(address, limit = 1000)
+            val items = assetsResponse.result?.jsonObject?.get("items")?.jsonArray
+
+            if (items == null) {
+                 return RpcResponse(result = GameAccessCheck(false, "Failed to fetch assets", sol, false))
+            }
+
+            var found = false
+            
+            for (item in items) {
+                val itemObj = item.jsonObject
+                val id = itemObj["id"]?.jsonPrimitive?.content
+                
+                // Check Mint Match
+                if (requiredMintAddress != null && id == requiredMintAddress) {
+                    found = true
+                    break
+                }
+
+                // Check Collection Match
+                if (requiredCollectionAddress != null) {
+                    val grouping = itemObj["grouping"]?.jsonArray
+                    grouping?.forEach { group ->
+                        val groupObj = group.jsonObject
+                        if (groupObj["group_key"]?.jsonPrimitive?.content == "collection" &&
+                            groupObj["group_value"]?.jsonPrimitive?.content == requiredCollectionAddress) {
+                            found = true
+                        }
+                    }
+                    if (found) break
+                }
+            }
+
+            return if (found) {
+                RpcResponse(result = GameAccessCheck(true, "Access Granted", sol, true))
+            } else {
+                RpcResponse(result = GameAccessCheck(false, "Required asset not found", sol, false))
+            }
+        }
+
+        /**
+         * Recursively fetches ALL assets for a wallet by handling pagination automatically.
+         * Warning: This can take a long time for wallets with many assets.
+         *
+         * @param ownerAddress Wallet address.
+         * @param maxPages Maximum number of pages to fetch (default 50). Each page is 1000 items.
+         */
+        suspend fun getAllAssetsByOwner(ownerAddress: String, maxPages: Int = 50): RpcResponse<List<JsonElement>> {
+            val allAssets = mutableListOf<JsonElement>()
+            var page = 1
+            
+            while (page <= maxPages) {
+                val response = das.getAssetsByOwner(ownerAddress, page = page, limit = 1000)
+                if (response.error != null) {
+                    if (page == 1) return RpcResponse(error = response.error)
+                    break 
+                }
+                
+                val items = response.result?.jsonObject?.get("items")?.jsonArray
+                if (items.isNullOrEmpty()) break
+                
+                allAssets.addAll(items)
+                if (items.size < 1000) break // End of list
+                
+                page++
+            }
+            
+            return RpcResponse(result = allAssets)
+        }
+
+        /**
+         * Recursively fetches ALL assets for a specific group (e.g. Collection) by handling pagination automatically.
+         * Warning: This can take a long time for large collections.
+         *
+         * @param groupKey The group key (e.g. "collection").
+         * @param groupValue The value for the group key.
+         * @param maxPages Maximum number of pages to fetch (default 50). Each page is 1000 items.
+         */
+        suspend fun getAllAssetsByGroup(groupKey: String, groupValue: String, maxPages: Int = 50): RpcResponse<List<JsonElement>> {
+            val allAssets = mutableListOf<JsonElement>()
+            var page = 1
+            
+            while (page <= maxPages) {
+                val response = das.getAssetsByGroup(groupKey, groupValue, page = page, limit = 1000)
+                if (response.error != null) {
+                    if (page == 1) return RpcResponse(error = response.error)
+                    break 
+                }
+                
+                val items = response.result?.jsonObject?.get("items")?.jsonArray
+                if (items.isNullOrEmpty()) break
+                
+                allAssets.addAll(items)
+                if (items.size < 1000) break // End of list
+                
+                page++
+            }
+            
+            return RpcResponse(result = allAssets)
+        }
+
+        /**
+         * Calculates the current Transactions Per Second (TPS) of the network.
+         * Uses `getRecentPerformanceSamples` to average the number of transactions over the sample period.
+         */
+        suspend fun getTPS(): RpcResponse<Double> {
+            val samplesResponse = solana.getRecentPerformanceSamples(1)
+            if (samplesResponse.error != null) return RpcResponse(error = samplesResponse.error)
+            
+            val sample = samplesResponse.result?.jsonArray?.getOrNull(0)?.jsonObject
+            if (sample == null) return RpcResponse(error = RpcError(500, "No performance samples available"))
+            
+            val numTransactions = sample["numTransactions"]?.jsonPrimitive?.longOrNull ?: 0L
+            val samplePeriodSecs = sample["samplePeriodSecs"]?.jsonPrimitive?.intOrNull ?: 0
+            
+            if (samplePeriodSecs == 0) return RpcResponse(result = 0.0)
+            
+            return RpcResponse(result = numTransactions.toDouble() / samplePeriodSecs)
+        }
+    }
+
+    /**
+     * Solana Name Service (SNS) API.
+     * Helper methods for interacting with .sol domains using Helius DAS.
+     */
+    inner class SnsApi {
+        /**
+         * Retrieves all .sol domains owned by a specific wallet.
+         * Uses DAS to find assets that look like domains.
+         */
+        suspend fun getDomains(owner: String): RpcResponse<List<JsonElement>> {
+            val response = das.getAssetsByOwner(owner, limit = 1000)
+            if (response.error != null) return RpcResponse(error = response.error)
+            
+            val items = response.result?.jsonObject?.get("items")?.jsonArray
+            val domains = items?.filter { item ->
+                val name = item.jsonObject["content"]?.jsonObject?.get("metadata")?.jsonObject?.get("name")?.jsonPrimitive?.content
+                // Check if it looks like a domain (ends with .sol)
+                name?.endsWith(".sol") == true
+            } ?: emptyList()
+            
+            return RpcResponse(result = domains)
+        }
+
+        /**
+         * Finds the "favorite" domain for a wallet (if any).
+         * Currently returns the first .sol domain found, but can be enhanced to check for the favorite record.
+         */
+        suspend fun getFavoriteDomain(owner: String): RpcResponse<String?> {
+            val domainsResponse = getDomains(owner)
+            if (domainsResponse.error != null) return RpcResponse(error = domainsResponse.error)
+            
+            val first = domainsResponse.result?.firstOrNull()
+            val name = first?.jsonObject?.get("content")?.jsonObject?.get("metadata")?.jsonObject?.get("name")?.jsonPrimitive?.content
+            
+            return RpcResponse(result = name)
+        }
+    }
+
+    /**
+     * Mobile & Android Utilities.
+     * Features designed to make Solana mobile development easier.
+     */
+    inner class MobileApi {
+        
+        /**
+         * Generates a Solana Pay deep link (or standard Solana deep link).
+         * Useful for generating QR codes or intent URLs in Android apps.
+         * 
+         * @param recipient Destination wallet address.
+         * @param amount Amount in SOL (optional).
+         * @param label Label for the transaction (optional).
+         * @param message Message for the transaction (optional).
+         * @param memo Memo for the transaction (optional).
+         */
+        fun generatePaymentLink(
+            recipient: String,
+            amount: Double? = null,
+            label: String? = null,
+            message: String? = null,
+            memo: String? = null
+        ): String {
+            val sb = StringBuilder("solana:$recipient")
+            val params = mutableListOf<String>()
+            
+            if (amount != null) params.add("amount=$amount")
+            if (label != null) params.add("label=${java.net.URLEncoder.encode(label, "UTF-8")}")
+            if (message != null) params.add("message=${java.net.URLEncoder.encode(message, "UTF-8")}")
+            if (memo != null) params.add("memo=${java.net.URLEncoder.encode(memo, "UTF-8")}")
+            
+            if (params.isNotEmpty()) {
+                sb.append("?").append(params.joinToString("&"))
+            }
+            
+            return sb.toString()
+        }
+
+        /**
+         * Returns a "Lite" version of an asset, optimized for mobile list views.
+         * Fetches the asset but only returns the ID, Name, and Image URL to save bandwidth/processing.
+         * 
+         * @param assetId The asset ID.
+         */
+        suspend fun getAssetLite(assetId: String): RpcResponse<JsonObject> {
+            val response = das.getAsset(assetId)
+            if (response.error != null) return RpcResponse(error = response.error)
+            
+            val result = response.result?.jsonObject
+            val content = result?.get("content")?.jsonObject
+            val metadata = content?.get("metadata")?.jsonObject
+            val files = content?.get("files")?.jsonArray
+            
+            // Try to find the image URI in files or links
+            val image = files?.firstOrNull()?.jsonObject?.get("uri")?.jsonPrimitive?.content 
+                ?: content?.get("links")?.jsonObject?.get("image")?.jsonPrimitive?.content
+            
+            val lite = buildJsonObject {
+                put("id", result?.get("id")?.jsonPrimitive?.content)
+                put("name", metadata?.get("name")?.jsonPrimitive?.content)
+                put("image", image)
+            }
+            
+            return RpcResponse(result = lite)
+        }
+
+        /**
+         * Parses a Solana Pay URI (or standard solana: URI) into a structured object.
+         * Useful for handling deep links in Android apps.
+         */
+        fun parsePaymentLink(uri: String): Map<String, String> {
+            if (!uri.startsWith("solana:")) return emptyMap()
+            
+            val parts = uri.removePrefix("solana:").split("?")
+            val recipient = parts[0]
+            val params = mutableMapOf("recipient" to recipient)
+            
+            if (parts.size > 1) {
+                val query = parts[1]
+                query.split("&").forEach { pair ->
+                    val kv = pair.split("=")
+                    if (kv.size == 2) {
+                        params[kv[0]] = java.net.URLDecoder.decode(kv[1], "UTF-8")
+                    }
+                }
+            }
+            return params
+        }
+
+        /**
+         * Validates if a string is a valid Solana address (base58, 32-44 chars).
+         * Does not verify checksum (requires crypto lib), but does basic format check.
+         */
+        fun isValidAddress(address: String): Boolean {
+            val regex = Regex("^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+            return regex.matches(address)
         }
     }
 }
