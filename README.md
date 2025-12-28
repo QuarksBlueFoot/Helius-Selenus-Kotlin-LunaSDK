@@ -6,7 +6,7 @@ transactions, priority fee estimation, enhanced transactions, webhooks, WebSocke
 as idiomatic, suspendable Kotlin functions.  The goal is to provide Android and JVM developers with a clean,
 coroutine-friendly interface that hides JSON-RPC boilerplate and makes interacting with Helius simple.
 
-For more information, visit [selenus.bluefootlabs.com](https://selenus.bluefootlabs.com).
+For more information, visit [selenus.xyz](https://selenus.xyz).
 
 ## Highlights
 
@@ -16,9 +16,10 @@ For more information, visit [selenus.bluefootlabs.com](https://selenus.bluefootl
   schemas are stable, while dynamic fields fall back to `JsonElement` for maximum flexibility.
 - **Easy configuration**: a single `LunaHeliusClient` takes an API key and cluster, then exposes
   namespaced APIs via properties (`das`, `rpc`, `staking`, `tx`, `priority`, `enhanced`, `webhooks`,
-  `ws`, `zk`).  Each namespace groups related methods to mirror the structure of the official Helius
+  `ws`, `zk`, `sender`, `solana`, `niche`).  Each namespace groups related methods to mirror the structure of the official Helius
   Node.js SDK described in the Helius documentation.
 - **No dependencies on web3.js**: calls are made directly via HTTP using OkHttp and `kotlinx.serialization`.
+- **Minimal Dependencies**: To keep the SDK lightweight, cryptographic operations (like webhook signature verification) require an external library (e.g., Bouncy Castle or TweetNacl).
 - **Extensible**: additional endpoints can be added by creating new methods in the appropriate
   namespace.
 
@@ -73,18 +74,30 @@ A complete Android sample application is available in the `sample-app` directory
 
 ## Installation
 
+### Local Development
 LunaSDK is distributed as a Gradle module.  You can include it in your project by
 publishing the module locally or copying the `luna-sdk` folder into your Android
 or JVM build.  The library depends only on `okhttp` and `kotlinx.serialization`.
 
-```
+```kotlin
 // settings.gradle.kts
 include(":luna-sdk")
 
 // build.gradle.kts for your app module
 dependencies {
     implementation(project(":luna-sdk"))
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+}
+```
+
+### Maven Central
+To use the published library:
+
+```kotlin
+dependencies {
+    implementation("xyz.selenus:luna-sdk:1.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
 ```
@@ -425,6 +438,47 @@ Solana.  These calls are grouped under `LunaHeliusClient.zk`.
 | `getMultipleNewAddressProofsV2(newAddresses)` | Same as above (V2). |
 | `getTransactionWithCompressionInfo(signature)` | Retrieve a transaction and parse compression info. |
 | `getValidityProof(args)` | Return a ZK proof to verify compressed accounts and new address creation. |
+
+### Niche & Composite API
+
+The `niche` namespace provides high-level, composite methods that combine multiple RPC calls into single operations. These are designed for specific use cases like gaming, dashboards, and deep analysis.
+
+| Method | Description |
+|-------|-------------|
+| `getWalletPortfolio(address)` | Returns a complete snapshot of a wallet, including SOL balance and all DAS assets. |
+| `getTokenDeepDive(mint)` | Fetches metadata, supply, and largest accounts for a token in one call. |
+| `verifyGameAccess(address, ...)` | Verifies if a user meets specific criteria (balance + asset ownership) to access a feature. |
+| `getAllAssetsByOwner(address, maxPages)` | Recursively fetches **all** assets for a wallet, handling pagination automatically. |
+| `getAllAssetsByGroup(groupKey, groupValue, maxPages)` | Recursively fetches **all** assets for a group (e.g. Collection), handling pagination automatically. |
+| `getTPS()` | Calculates the current network Transactions Per Second (TPS). |
+
+### Solana Name Service (SNS)
+
+Access via `client.sns`.
+
+| Method | Description |
+|-------|-------------|
+| `getDomains(owner)` | Returns all `.sol` domains owned by a wallet. |
+| `getFavoriteDomain(owner)` | Returns the primary/favorite domain for a wallet. |
+
+### Memo API
+
+Access via `client.memo`.
+
+| Method | Description |
+|-------|-------------|
+| `getMemosForTransaction(signature)` | Extracts SPL Memo instructions from a transaction. |
+
+### Mobile & Android Utilities
+
+Access via `client.mobile`.
+
+| Method | Description |
+|-------|-------------|
+| `generatePaymentLink(recipient, amount...)` | Generates `solana:` deep links for QR codes or intents. |
+| `parsePaymentLink(uri)` | Parses a `solana:` URI into a map of parameters. |
+| `isValidAddress(address)` | Validates if a string is a valid Solana address format. |
+| `getAssetLite(assetId)` | Returns a lightweight asset object (ID, Name, Image) optimized for mobile lists. |
 
 ### LaserStream gRPC (Data Streaming)
 
