@@ -32,7 +32,8 @@ val sourcesJar by tasks.registering(Jar::class) {
 
 val javadocJar by tasks.registering(Jar::class) {
     archiveClassifier.set("javadoc")
-    from(files()) // Empty Javadoc JAR to satisfy Maven Central requirements
+    from(rootProject.file("README.md"))
+    into(".")
 }
 
 publishing {
@@ -57,6 +58,9 @@ publishing {
                     developer {
                         id.set(property("POM_DEVELOPER_ID") as String)
                         name.set(property("POM_DEVELOPER_NAME") as String)
+                        email.set(property("POM_DEVELOPER_EMAIL") as String)
+                        organization.set(property("POM_ORGANIZATION") as String)
+                        organizationUrl.set(property("POM_ORGANIZATION_URL") as String)
                     }
                 }
                 scm {
@@ -69,12 +73,8 @@ publishing {
     }
     repositories {
         maven {
-            name = "OSSRH"
-            url = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
-            credentials {
-                username = System.getenv("OSSRH_USERNAME")
-                password = System.getenv("OSSRH_PASSWORD")
-            }
+            name = "Staging"
+            url = uri(layout.buildDirectory.dir("staging-deploy"))
         }
     }
 }
