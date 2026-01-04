@@ -6,3 +6,5 @@ build
 .kotlin
 *.gpg
 secring.gpg
+local.properties
+android-sdk/
