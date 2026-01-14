@@ -13,6 +13,10 @@ class LiveIntegrationTest {
 
     @Test
     fun testGetSlot() = runBlocking {
+        if (apiKey == "REDACTED_API_KEY") {
+            println("Skipping testGetSlot: No API Key")
+            return@runBlocking
+        }
         println("Testing getSlot...")
         val response = client.rpcCall("getSlot", kotlinx.serialization.json.JsonArray(emptyList()))
         println("Slot: ${response.result}")
@@ -21,6 +25,10 @@ class LiveIntegrationTest {
 
     @Test
     fun testGetAsset() = runBlocking {
+        if (apiKey == "REDACTED_API_KEY") {
+            println("Skipping testGetAsset: No API Key")
+            return@runBlocking
+        }
         println("Testing getAsset...")
         // Asset ID from FeatureRegistry
         val assetId = "F9Lw3ki3hJ7PF9HQXsBzoY8GyE6sPoEZZdXJBsTTD2rk"
@@ -31,6 +39,10 @@ class LiveIntegrationTest {
 
     @Test
     fun testGetAssetsByOwner() = runBlocking {
+        if (apiKey == "REDACTED_API_KEY") {
+            println("Skipping testGetAssetsByOwner: No API Key")
+            return@runBlocking
+        }
         println("Testing getAssetsByOwner...")
         // Owner from FeatureRegistry
         val owner = "86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY"
@@ -41,6 +53,10 @@ class LiveIntegrationTest {
 
     @Test
     fun testGetTPS() = runBlocking {
+        if (apiKey == "REDACTED_API_KEY") {
+            println("Skipping testGetTPS: No API Key")
+            return@runBlocking
+        }
         println("Testing getTPS...")
         val response = client.niche.getTPS()
         println("TPS: ${response.result}")
