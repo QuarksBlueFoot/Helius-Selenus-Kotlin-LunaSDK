@@ -7,8 +7,8 @@ import kotlin.test.assertNotNull
 
 class LiveIntegrationTest {
 
-    // Using the API key from the sample app
-    private val apiKey = "REDACTED_API_KEY"
+    // Attempts to read from environment variable, falls back to placeholder
+    private val apiKey = System.getenv("HELIUS_API_KEY") ?: "REDACTED_API_KEY"
     private val client = LunaHeliusClient(apiKey, Cluster.MAINNET)
 
     @Test
