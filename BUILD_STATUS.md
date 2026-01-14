@@ -1,12 +1,20 @@
 # Build Status Report
 
-**Date**: January 2, 2026  
-**Version**: 1.0.1  
-**Status**: ✅ **ALL CLEAR - Ready for Production**
+**Date**: January 2, 2026 (Updated: October 2026)
+**Version**: 1.0.2 - Fixed Enhanced API
+**Status**: ✅ 
 
 ---
 
 ## Issues Resolved
+
+### 2. Enhanced API Endpoint Fix ✅
+**Problem**: The Enhanced API methods (e.g., `getTransactionsByAddress`) were incorrectly wrapping requests in JSON-RPC format and sending them to the Helius RPC Endpoint (`mainnet.helius-rpc.com`) instead of the Helius REST API (`api.helius.xyz`). This resulted in `METHOD_NOT_FOUND` or 404 errors.
+
+**Solution**:
+- Implemented `restCall` in `LunaHeliusClient` to handle standard REST requests via OkHttp.
+- Updated `enhanced.getTransactions` and `enhanced.getTransactionsByAddress` to use the dedicated REST endpoint.
+- Validated with `AdvancedRpcTest`.
 
 ### 1. Java Version Compatibility ✅
 **Problem**: Class file major version 65 (Java 21) errors when Android tried to consume the library.

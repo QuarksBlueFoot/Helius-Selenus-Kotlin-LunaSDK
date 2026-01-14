@@ -208,6 +208,50 @@ class LunaHeliusClient(
     }
 
     /**
+     * Executes a REST API call against Helius API (api.helius.xyz).
+     * This is used for Enhanced APIs (Parse Transactions, Transaction History).
+     */
+    @Throws(Exception::class)
+    private suspend fun restCall(
+        endpoint: String,
+        method: String = "GET",
+        body: JsonElement? = null,
+        queryParams: Map<String, String> = emptyMap()
+    ): JsonElement {
+        val urlBuilder = "https://api.helius.xyz/v0/$endpoint".toHttpUrl().newBuilder()
+            .addQueryParameter("api-key", apiKey)
+        
+        queryParams.forEach { (key, value) ->
+            urlBuilder.addQueryParameter(key, value)
+        }
+        
+        val url = urlBuilder.build()
+        
+        val requestBuilder = Request.Builder().url(url)
+        
+        if (method == "POST" && body != null) {
+            val mediaType = "application/json".toMediaType()
+            val requestBody = json.encodeToString(JsonElement.serializer(), body).toRequestBody(mediaType)
+            requestBuilder.post(requestBody)
+        } else if (method == "GET") {
+            requestBuilder.get()
+        }
+
+        val request = requestBuilder.build()
+
+        return httpClient.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
+            if (!response.isSuccessful || responseBody == null) {
+                val errorMsg = try {
+                   if (responseBody != null) json.parseToJsonElement(responseBody).jsonObject["error"]?.jsonPrimitive?.content else null
+                } catch (e: Exception) { null }
+                throw Exception("Helius REST call failed with HTTP ${response.code}: ${errorMsg ?: response.message}")
+            }
+            json.parseToJsonElement(responseBody)
+        }
+    }
+
+    /**
      * Fetches the 75th percentile tip floor from Jito.
      * Returns null if the fetch fails.
      */
@@ -1285,9 +1329,11 @@ class LunaHeliusClient(
          */
         suspend fun getTransactions(signatures: List<String>): RpcResponse<JsonElement> {
             val params = buildJsonObject {
-                put("signatures", JsonArray(signatures.map { JsonPrimitive(it) }))
+                put("transactions", JsonArray(signatures.map { JsonPrimitive(it) }))
             }
-            return rpcCall("getTransactions", params)
+            // Use REST call for enhanced transactions parsing
+            val result = restCall("transactions", method = "POST", body = params)
+            return RpcResponse(result = result)
         }
 
         /**
@@ -1305,14 +1351,15 @@ class LunaHeliusClient(
             before: String? = null,
             until: String? = null
         ): RpcResponse<JsonElement> {
-            val params = buildJsonObject {
-                put("address", address)
-                page?.let { put("page", it) }
-                limit?.let { put("limit", it) }
-                before?.let { put("before", it) }
-                until?.let { put("until", it) }
-            }
-            return rpcCall("getTransactionsByAddress", params)
+            val queryParams = mutableMapOf<String, String>()
+            page?.let { queryParams["page"] = it.toString() }
+            limit?.let { queryParams["limit"] = it.toString() }
+            before?.let { queryParams["before"] = it }
+            until?.let { queryParams["until"] = it }
+
+            // Use REST call for enhanced transaction history
+            val result = restCall("addresses/$address/transactions", queryParams = queryParams)
+            return RpcResponse(result = result)
         }
     }
 
@@ -2346,14 +2393,23 @@ class LunaHeliusClient(
          * Retrieves a complete snapshot of a wallet: SOL balance and DAS assets.
          * Combines `solana.getBalance` and `das.getAssetsByOwner`.
          */
-        suspend fun getWalletPortfolio(address: String): RpcResponse<WalletPortfolio> {
+        suspend fun getWalletPortfolio(address: String, limit: Int = 1000): RpcResponse<WalletPortfolio> {
             val balanceResponse = solana.getBalance(address)
-            val assetsResponse = das.getAssetsByOwner(address, limit = 1000)
+            val assetsResponse = das.getAssetsByOwner(address, limit = limit)
 
             if (balanceResponse.error != null) return RpcResponse(error = balanceResponse.error)
             if (assetsResponse.error != null) return RpcResponse(error = assetsResponse.error)
 
-            val lamports = balanceResponse.result?.jsonPrimitive?.longOrNull ?: 0L
+            // Parse balance result. It might be a primitive (long) or a Context object {"context":..., "value":...}
+            val balanceElement = balanceResponse.result
+            val lamports = if (balanceElement is JsonPrimitive) {
+                balanceElement.longOrNull ?: 0L
+            } else if (balanceElement is JsonObject && balanceElement.containsKey("value")) {
+                balanceElement["value"]?.jsonPrimitive?.longOrNull ?: 0L
+            } else {
+                0L
+            }
+
             val sol = lamports / 1_000_000_000.0
 
             return RpcResponse(
@@ -2405,7 +2461,16 @@ class LunaHeliusClient(
         ): RpcResponse<GameAccessCheck> {
             // 1. Check Balance
             val balanceResponse = solana.getBalance(address)
-            val lamports = balanceResponse.result?.jsonPrimitive?.longOrNull ?: 0L
+            
+             val balanceElement = balanceResponse.result
+             val lamports = if (balanceElement is JsonPrimitive) {
+                 balanceElement.longOrNull ?: 0L
+             } else if (balanceElement is JsonObject && balanceElement.containsKey("value")) {
+                 balanceElement["value"]?.jsonPrimitive?.longOrNull ?: 0L
+             } else {
+                 0L
+             }
+
             val sol = lamports / 1_000_000_000.0
 
             if (sol < minSolBalance) {
