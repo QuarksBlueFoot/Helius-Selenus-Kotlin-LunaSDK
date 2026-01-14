@@ -8,3 +8,6 @@ build
 secring.gpg
 local.properties
 android-sdk/
+secret.asc
+gpg-gen-key-script
+gpg-gen-key.conf
