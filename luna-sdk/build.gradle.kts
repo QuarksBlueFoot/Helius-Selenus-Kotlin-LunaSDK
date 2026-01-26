@@ -13,12 +13,18 @@ group = property("GROUP_ID") as String
 version = property("VERSION_NAME") as String
 
 dependencies {
+    // HTTP Client
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    
+    // 2026 Kotlin Ecosystem (Latest stable versions)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    
+    // Kotlin Standard Library
     implementation(kotlin("stdlib"))
 
     testImplementation(kotlin("test"))
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
 
 tasks.test {

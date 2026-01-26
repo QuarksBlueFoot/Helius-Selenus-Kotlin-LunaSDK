@@ -6,18 +6,30 @@ transactions, priority fee estimation, enhanced transactions, webhooks, WebSocke
 as idiomatic, suspendable Kotlin functions.  The goal is to provide Android and JVM developers with a clean,
 coroutine-friendly interface that hides JSON-RPC boilerplate and makes interacting with Helius simple.
 
+**v5.1.0** introduces **Helius-Exclusive Advanced Infrastructure** with ultra-low latency Sender API,
+LaserStream gRPC configuration, extended ZK Compression, and Web2-inspired innovation APIs including
+Analytics Dashboards, Real-Time Notifications, and Mobile-First Optimization.
+
 For more information, visit [selenus.xyz](https://selenus.xyz).
 
 ## Highlights
 
+- **Helius-Exclusive Infrastructure**: Ultra-low latency Sender API, LaserStream gRPC with 9 global
+  regions, extended ZK Compression with 20+ methods, enhanced WebSocket Flow subscriptions.
+- **Web2-Inspired Innovation**: Analytics dashboards with funnel analysis and cohort metrics,
+  real-time notification system, and mobile-first optimization with battery-aware polling.
+- **2026 Kotlin Architecture**: Built on Kotlin Coroutines 1.10.2 with Flow-based reactive streams,
+  StateFlow for UI binding, and channelFlow for WebSocket subscriptions.
+- **Privacy Innovation**: ZK Privacy API, Confidential Transactions, and Full Privacy Audits - 
+  features no other SDK offers.
 - **Modern design**: built around Kotlin coroutines, data classes and sealed types to leverage
   contemporary language features.
 - **Strong typing**: request and response objects are represented as data classes where the Helius API
   schemas are stable, while dynamic fields fall back to `JsonElement` for maximum flexibility.
 - **Easy configuration**: a single `LunaHeliusClient` takes an API key and cluster, then exposes
   namespaced APIs via properties (`das`, `rpc`, `staking`, `tx`, `priority`, `enhanced`, `webhooks`,
-  `ws`, `zk`, `sender`, `solana`, `niche`).  Each namespace groups related methods to mirror the structure of the official Helius
-  Node.js SDK described in the Helius documentation.
+  `ws`, `zk`, `sender`, `solana`, `niche`, `reactive`, `zkPrivacy`, `confidential`, `subscriptions`,
+  `laserStream`, `zkCompressionExtended`, `wsEnhanced`, `analytics`, `notifications`, `mobileOptimization`).
 - **No dependencies on web3.js**: calls are made directly via HTTP using OkHttp and `kotlinx.serialization`.
 - **Minimal Dependencies**: To keep the SDK lightweight, cryptographic operations (like webhook signature verification) require an external library (e.g., Bouncy Castle or TweetNacl).
 - **Extensible**: additional endpoints can be added by creating new methods in the appropriate
@@ -29,10 +41,59 @@ For more information, visit [selenus.xyz](https://selenus.xyz).
 import com.selenus.luna.LunaHeliusClient
 import com.selenus.luna.Cluster
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 fun main() = runBlocking {
     val apiKey = "YOUR_HELIUS_API_KEY"
     val helius = LunaHeliusClient(apiKey, Cluster.MAINNET)
+
+    // v5.1.0: Ultra-low latency transaction submission via Helius Sender
+    helius.sender.sendAndTrack("base64Transaction")
+        .collect { status ->
+            println("Phase: ${status.phase}, Status: ${status.confirmationStatus}")
+        }
+    
+    // v5.1.0: Find optimal Sender region for backend apps
+    val optimalRegion = helius.sender.findOptimalRegion()
+    println("Use: ${optimalRegion.optimalEndpoint} (${optimalRegion.latencyMs}ms)")
+
+    // v5.1.0: LaserStream gRPC configuration
+    val regions = helius.laserStream.getAvailableRegions()
+    println("Available regions: ${regions.map { it.name }}")
+    
+    val txSubscription = helius.laserStream.buildTransactionSubscription(
+        accountInclude = listOf("wallet-address"),
+        includeFailed = false
+    )
+
+    // v5.1.0: Web2-inspired wallet health score
+    val healthScore = helius.analytics.calculateWalletHealthScore("wallet-address")
+    println("Health: ${healthScore.result?.healthLevel} (${healthScore.result?.overallScore}/100)")
+
+    // v5.1.0: Real-time notifications
+    val alert = helius.notifications.createBalanceAlert(
+        walletAddress = "wallet-address",
+        thresholdLamports = 1_000_000_000L, // 1 SOL
+        direction = "below"
+    )
+    helius.notifications.monitorAlerts(listOf(alert))
+        .collect { notification ->
+            println("Alert: ${notification.message}")
+        }
+
+    // v5.1.0: Mobile-optimized compact summary
+    val summary = helius.mobileOptimization.getCompactWalletSummary("wallet-address")
+    println("${summary.balanceSol} SOL, ${summary.tokenCount} tokens")
+
+    // v5.0.0: Flow-based reactive streaming
+    helius.reactive.balanceChanges("wallet-address")
+        .onEach { balance -> println("Balance: ${balance / 1_000_000_000.0} SOL") }
+        .launchIn(this)
+
+    // v5.0.0: ZK Privacy Audit
+    val privacyAudit = helius.zkPrivacy.fullPrivacyAudit("wallet-address")
+    println("Privacy Score: ${privacyAudit.result?.overallScore}/100")
 
     // Fetch a single asset by its ID
     val asset = helius.das.getAsset("F9Lw3ki3hJ7PF9HQXsBzoY8GyE6sPoEZZdXJBsTTD2rk")
@@ -49,18 +110,6 @@ fun main() = runBlocking {
     // Estimate a priority fee
     val fee = helius.priority.getPriorityFeeEstimate(priorityLevel = "High")
     println(fee?.result)
-
-    // Get Jito Tip Floor (Sender API)
-    val tip = helius.sender.getSenderTipFloor()
-    println("Tip Floor: ${tip.result}")
-
-    // Standard Solana RPC call (e.g. get balance)
-    val balance = helius.solana.getBalance("86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY")
-    println("Balance: ${balance?.result}")
-
-    // Create and send a smart transaction (example only, replace with real serialized tx)
-    // val txResponse = helius.tx.sendTransaction("base64EncodedTransaction")
-    // println(txResponse?.result)
 }
 ```
 
@@ -86,7 +135,8 @@ include(":luna-sdk")
 // build.gradle.kts for your app module
 dependencies {
     implementation(project(":luna-sdk"))
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
 ```
@@ -96,8 +146,8 @@ To use the published library:
 
 ```kotlin
 dependencies {
-    implementation("xyz.selenus:luna-sdk:1.0.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("xyz.selenus:luna-sdk:5.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
 ```

@@ -18,7 +18,13 @@ This guide provides a detailed overview of the **LunaSDK** for Helius, covering 
 12. [WebSockets](#websockets)
 13. [ZK Compression](#zk-compression)
 14. [LaserStream](#laserstream)
-15. [Example App](#example-app)
+15. [Transaction History API (NEW!)](#transaction-history-api-v30---new)
+16. [Funding Tracker API (NEW!)](#funding-tracker-api-v30---new)
+17. [Token Launch Detection API (NEW!)](#token-launch-detection-api-v30---new)
+18. [Wallet Correlation API (NEW!)](#wallet-correlation-api-v30---new)
+19. [Time Travel API (NEW!)](#time-travel-api-v30---new)
+20. [Batch Operations API (NEW!)](#batch-operations-api-v30---new)
+21. [Example App](#example-app)
 
 ---
 
@@ -641,4 +647,551 @@ You can run the examples using Gradle. The test file contains a `main` function 
 ```
 
 Note: Ensure you have a valid API key and, for some examples, a funded wallet if you intend to execute transactions.
+
+---
+
+## Jupiter DEX Integration (NEW)
+
+Access via `client.jupiter`.
+
+Native integration with Jupiter's DEX aggregator for optimal token swaps.
+
+### Methods
+
+*   **`getQuote(inputMint, outputMint, amount, slippageBps)`**: Get the best swap route and quote.
+*   **`getSwapTransaction(quoteResponse, userPublicKey, ...)`**: Build a swap transaction from a quote.
+*   **`swapViaSender(inputMint, outputMint, amount, userPublicKey, signCallback)`**: Combined Jupiter + Sender for ultra-low latency swaps.
+*   **`getTokenList()`**: Get all tradeable tokens on Jupiter.
+*   **`getPrices(mintAddresses)`**: Get real-time token prices.
+
+### Example
+
+```kotlin
+// Get a swap quote
+val quote = client.jupiter.getQuote(
+    inputMint = "So11111111111111111111111111111111111111112", // SOL
+    outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+    amount = 1_000_000_000, // 1 SOL in lamports
+    slippageBps = 50 // 0.5%
+).result
+
+// Get token prices
+val prices = client.jupiter.getPrices(listOf(
+    "So11111111111111111111111111111111111111112",
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+)).result
+```
+
+---
+
+## Token-2022 Extensions (NEW)
+
+Access via `client.token2022`.
+
+Support for Solana's Token-2022 program and its extensions.
+
+### Methods
+
+*   **`getExtensions(mint)`**: Detect which Token-2022 extensions are enabled for a mint.
+*   **`isToken2022Account(account)`**: Check if an account uses the Token-2022 program.
+*   **`getToken2022AccountsByOwner(owner)`**: Get all Token-2022 accounts for an owner.
+*   **`calculateTransferFee(mint, amount)`**: Calculate transfer fees for tokens with transfer fee extension.
+
+### Example
+
+```kotlin
+// Check extensions on a Token-2022 mint
+val extensions = client.token2022.getExtensions("Token2022_Mint_Address").result
+println("Has Transfer Fee: ${extensions?.hasTransferFee}")
+println("Has Confidential Transfer: ${extensions?.hasConfidentialTransfer}")
+println("All Extensions: ${extensions?.extensions}")
+
+// Calculate transfer fee
+val fee = client.token2022.calculateTransferFee(
+    mint = "Token2022_Mint_Address",
+    amount = 1_000_000_000
+).result
+println("Transfer Fee: $fee lamports")
+```
+
+---
+
+## Privacy API (EXCLUSIVE)
+
+Access via `client.privacy`.
+
+Industry-first privacy analysis features exclusive to LunaSDK.
+
+### Methods
+
+*   **`analyzeWalletPrivacy(address)`**: Get privacy score (0-100) with actionable recommendations.
+*   **`estimateAnonymitySet(amountLamports)`**: Understand how unique a transaction amount appears on-chain.
+*   **`getPrivacyOptimizedAmount(amountLamports)`**: Get suggestions for amounts with larger anonymity sets.
+*   **`analyzeAddressLinkage(address1, address2)`**: Heuristic analysis to detect if two addresses might be related.
+
+### Example
+
+```kotlin
+// Analyze wallet privacy
+val privacy = client.privacy.analyzeWalletPrivacy("Wallet_Address").result
+println("Privacy Score: ${privacy?.score}/100")
+println("Risk Factors: ${privacy?.factors}")
+println("Recommendations: ${privacy?.recommendations}")
+
+// Check anonymity for a transaction amount
+val anonymity = client.privacy.estimateAnonymitySet(
+    amountLamports = 1_000_000_000 // 1 SOL
+).result
+println("Anonymity Set Size: ${anonymity?.size}")
+println("Amount Pattern Risk: ${anonymity?.amountPatternRisk}")
+
+// Check if two addresses are linked
+val linkage = client.privacy.analyzeAddressLinkage(
+    address1 = "Wallet_Address_1",
+    address2 = "Wallet_Address_2"
+).result
+println("Linkage Analysis: $linkage")
+```
+
+---
+
+## Analytics API (NEW)
+
+Access via `client.analytics`.
+
+Advanced wallet and token intelligence.
+
+### Methods
+
+*   **`getWalletRiskScore(address)`**: Risk assessment for any wallet address.
+*   **`getTokenHealthScore(mint)`**: Token safety analysis (holder concentration, rug-pull risk).
+*   **`getPortfolioAnalytics(address)`**: Comprehensive portfolio breakdown.
+*   **`getNetworkHealth()`**: Real-time network metrics (TPS, health, version).
+
+### Example
+
+```kotlin
+// Get wallet risk score
+val risk = client.analytics.getWalletRiskScore("Wallet_Address").result
+println("Risk Score: ${risk?.riskScore}/100")
+println("Risk Level: ${risk?.riskLevel}")
+println("Factors: ${risk?.factors}")
+
+// Analyze token health
+val tokenHealth = client.analytics.getTokenHealthScore("Token_Mint").result
+println("Health Score: ${tokenHealth?.healthScore}/100")
+println("Rug Pull Risk: ${tokenHealth?.rugPullRisk}")
+println("Holder Concentration: ${tokenHealth?.holderConcentration}%")
+
+// Get portfolio analytics
+val portfolio = client.analytics.getPortfolioAnalytics("Wallet_Address").result
+println("SOL Balance: ${portfolio?.solBalance}")
+println("Token Count: ${portfolio?.tokenCount}")
+println("NFT Count: ${portfolio?.nftCount}")
+println("Risk Profile: ${portfolio?.riskProfile}")
+println("Diversification: ${portfolio?.diversificationScore}/100")
+
+// Check network health
+val network = client.analytics.getNetworkHealth().result
+println("Network Status: $network")
+```
+
+---
+
+## Mobile Wallet Adapter Bridge (NEW)
+
+Access via `client.walletAdapter`.
+
+Utilities for integrating with Mobile Wallet Adapter protocol.
+
+### Methods
+
+*   **`generateAssociationUri(appIdentity, cluster)`**: Create deep link for wallet connection.
+*   **`parseCallbackUri(callbackUri)`**: Handle wallet callback responses.
+*   **`getKnownWallets()`**: List of popular MWA-compatible wallets.
+*   **`createTransactionRequestLink(endpoint, label, message)`**: Create Solana Pay Transaction Request URLs.
+
+### Example
+
+```kotlin
+// Get list of known wallets
+val wallets = client.walletAdapter.getKnownWallets()
+wallets.forEach { wallet ->
+    println("Wallet: ${wallet["name"]} - ${wallet["package"]}")
+}
+
+// Generate association URI
+val uri = client.walletAdapter.generateAssociationUri(
+    appIdentity = "MyApp",
+    cluster = Cluster.MAINNET
+)
+println("Deep Link: $uri")
+
+// Create transaction request link
+val txRequestLink = client.walletAdapter.createTransactionRequestLink(
+    endpoint = "https://myapp.com/api/tx",
+    label = "Purchase Item",
+    message = "Buy NFT for 0.5 SOL"
+)
+println("TX Request: $txRequestLink")
+```
+
+---
+
+## Mint API (NEW)
+
+Access via `client.mint`.
+
+Token and NFT creation utilities.
+
+### Methods
+
+*   **`createFungibleToken(authority, name, symbol, decimals, uri)`**: Create a new fungible token.
+*   **`mintCompressedNft(collectionMint, recipients)`**: Mint compressed NFTs to a collection.
+*   **`getMintStatus(mintId)`**: Check status of a mint operation.
+
+---
+
+## Validator ACL API (NEW)
+
+Access via `client.validatorAcl`.
+
+Send transactions with validator allow/deny lists.
+
+### Methods
+
+*   **`sendTransactionWithAcl(transaction, allowList, denyList)`**: Send transaction with validator restrictions.
+*   **`getActiveValidators()`**: Get current active validators.
+*   **`getValidatorsByStake(limit)`**: Get validators sorted by stake (most reliable first).
+
+### Example
+
+```kotlin
+// Get top validators by stake
+val topValidators = client.validatorAcl.getValidatorsByStake(10).result
+println("Top 10 Validators: $topValidators")
+
+// Send with validator restrictions
+val signature = client.validatorAcl.sendTransactionWithAcl(
+    transaction = "base64_transaction",
+    allowList = listOf("Validator1Pubkey", "Validator2Pubkey")
+).result
+```
+
+---
+
+## Enhanced WebSocket Features (NEW)
+
+Access via `client.ws`.
+
+Additional subscription methods for advanced use cases.
+
+### New Methods
+
+*   **`enhancedTransactionSubscribe(config)`**: Subscribe to transactions with granular filtering.
+*   **`blockSubscribe(filter, commitment)`**: Subscribe to block notifications.
+*   **`rootSubscribe()`**: Subscribe to root slot updates.
+*   **`voteSubscribe()`**: Subscribe to vote updates.
+*   **`slotsUpdatesSubscribe()`**: Subscribe to detailed slot updates.
+
+### Example
+
+```kotlin
+// Enhanced transaction subscription with filters
+val config = LunaHeliusClient.EnhancedTransactionConfig(
+    vote = false,
+    failed = false,
+    accountInclude = listOf("Program_Address"),
+    commitment = "confirmed",
+    transactionDetails = "full"
+)
+val subscribeMsg = client.ws.enhancedTransactionSubscribe(config)
+ws.send(subscribeMsg)
+```
+
+---
+
+## Transaction History API (v3.0 - NEW!)
+
+Access via `client.history`.
+
+Fluent builder API for complex transaction history queries. This is a Luna SDK exclusive that makes complex queries simple and readable.
+
+### Methods
+
+*   **`query(address)`**: Create a new query builder.
+*   **`getCompleteHistory(address, maxPages)`**: Fetch entire transaction history.
+*   **`getTransactionsInTimeRange(address, from, to)`**: Filter by time period.
+*   **`getFullTransactionsWithTokens(address, limit)`**: Include token account transfers.
+
+### Builder Methods
+
+The query builder supports chaining:
+
+*   `.full()` / `.signatures()` - Transaction detail level
+*   `.chronological()` / `.newestFirst()` - Sort order
+*   `.onlySuccessful()` / `.onlyFailed()` - Status filter
+*   `.includeTokenAccounts()` / `.includeAllTokenAccounts()` - Token account inclusion
+*   `.afterSlot(slot)` / `.beforeSlot(slot)` / `.slotRange(from, to)` - Slot filters
+*   `.afterTime(timestamp)` / `.beforeTime(timestamp)` / `.timeRange(from, to)` - Time filters
+*   `.today()` / `.lastDays(n)` / `.lastWeek()` / `.lastMonth()` - Convenience time filters
+*   `.execute()` - Execute the query
+*   `.executeAll(maxPages)` - Auto-paginate through all results
+
+### Example
+
+```kotlin
+// Fluent query building
+val result = client.history.query("wallet_address")
+    .full()                          // Get full transaction data
+    .chronological()                 // Oldest first
+    .onlySuccessful()               // Filter failed transactions
+    .includeTokenAccounts()         // Include ATA history
+    .lastDays(7)                    // Last 7 days
+    .execute()
+
+println("Fetched ${result.result?.totalFetched} transactions")
+
+// Auto-paginate through ALL history
+val allTxs = client.history.query("wallet_address")
+    .signatures()
+    .newestFirst()
+    .limit(1000)
+    .executeAll(maxPages = 50) { page, total ->
+        println("Fetched page $page, total transactions: $total")
+    }
+
+println("Total transactions: ${allTxs.result?.size}")
+```
+
+---
+
+## Funding Tracker API (v3.0 - NEW!)
+
+Access via `client.funding`.
+
+Trace wallet funding sources and money flow. Essential for compliance, auditing, and investigation.
+
+### Methods
+
+*   **`getFundingSources(address, maxTransactions)`**: Find all wallets that funded an address.
+*   **`traceFundingOrigin(address, maxDepth)`**: Multi-hop origin tracing.
+*   **`getOutflows(address, maxTransactions)`**: Find where funds were sent.
+
+### Example
+
+```kotlin
+// Find who funded a wallet
+val funding = client.funding.getFundingSources("wallet_address").result
+
+println("Funded by ${funding?.uniqueFunders} unique wallets")
+funding?.fundingSources?.forEach { source ->
+    println("${source.sourceAddress}: ${source.amountSol} SOL")
+}
+
+// Trace back multiple hops
+val origin = client.funding.traceFundingOrigin("wallet_address", maxDepth = 3).result
+origin?.forEach { level ->
+    println("Level - ${level.fundingSources.size} sources")
+}
+
+// Find outflows
+val outflows = client.funding.getOutflows("wallet_address").result
+outflows?.forEach { outflow ->
+    println("Sent ${outflow.amountSol} SOL to ${outflow.sourceAddress}")
+}
+```
+
+---
+
+## Token Launch Detection API (v3.0 - NEW!)
+
+Access via `client.tokenLaunch`.
+
+Detect and analyze new token launches. Critical for trading bots and analytics platforms.
+
+### Methods
+
+*   **`analyzeLaunch(mintAddress)`**: Get creation transaction, creator, initial supply.
+*   **`getEarlyHolders(mintAddress, limit)`**: Find first N holders.
+*   **`getHolderDistribution(mintAddress)`**: Holder concentration analysis.
+
+### Example
+
+```kotlin
+// Analyze a token's launch
+val launch = client.tokenLaunch.analyzeLaunch("mint_address").result
+
+println("Creator: ${launch?.creatorAddress}")
+println("Created at: ${launch?.creationTime}")
+println("Initial Supply: ${launch?.initialSupply}")
+println("Is Token-2022: ${launch?.isToken2022}")
+
+// Check holder distribution for rug-pull risk
+val distribution = client.tokenLaunch.getHolderDistribution("mint_address").result
+
+val top5 = distribution?.jsonObject?.get("top5Concentration")?.jsonPrimitive?.double
+val risk = distribution?.jsonObject?.get("rugPullRisk")?.jsonPrimitive?.content
+println("Top 5 holders control: $top5%")
+println("Rug Pull Risk: $risk")
+```
+
+---
+
+## Wallet Correlation API (v3.0 - NEW!)
+
+Access via `client.correlation`.
+
+Detect related wallets and clusters using on-chain heuristics.
+
+### Methods
+
+*   **`findRelatedWallets(address, depth)`**: Discover wallet clusters and relationships.
+*   **`detectSameOwner(address1, address2)`**: Heuristic same-owner analysis.
+
+### Example
+
+```kotlin
+// Find related wallets
+val cluster = client.correlation.findRelatedWallets("wallet_address").result
+
+println("Cluster confidence: ${cluster?.clusterConfidence}%")
+println("Related wallets: ${cluster?.relatedWallets?.size}")
+
+cluster?.relatedWallets?.forEach { wallet ->
+    println("${wallet.address}: ${wallet.relationshipType} (${wallet.confidence}%)")
+}
+
+// Check if two wallets are same owner
+val sameOwner = client.correlation.detectSameOwner("wallet1", "wallet2").result
+
+val likelihood = sameOwner?.jsonObject?.get("likelihood")?.jsonPrimitive?.content
+val score = sameOwner?.jsonObject?.get("sameOwnerScore")?.jsonPrimitive?.int
+println("Same owner likelihood: $likelihood (score: $score)")
+```
+
+---
+
+## Time Travel API (v3.0 - NEW!)
+
+Access via `client.timeTravel`.
+
+Query historical wallet state at any point in time. Critical for auditing and compliance.
+
+### Methods
+
+*   **`getStateAtSlot(address, targetSlot)`**: Get wallet snapshot at specific slot.
+*   **`compareStates(address, fromSlot, toSlot)`**: Compare states between two points.
+*   **`getBalanceHistory(address, intervalSlots, samples)`**: Time series for charting.
+
+### Example
+
+```kotlin
+// Get wallet state at a specific slot
+val snapshot = client.timeTravel.getStateAtSlot("wallet_address", 250000000L).result
+
+println("Balance at slot 250000000: ${snapshot?.solBalance} lamports")
+
+// Compare states over time
+val comparison = client.timeTravel.compareStates(
+    "wallet_address",
+    fromSlot = 240000000L,
+    toSlot = 250000000L
+).result
+
+val changeSol = comparison?.jsonObject?.get("balanceChangeSol")?.jsonPrimitive?.double
+val pctChange = comparison?.jsonObject?.get("percentChange")?.jsonPrimitive?.double
+println("Balance changed by: $changeSol SOL ($pctChange%)")
+
+// Get balance history for charting
+val history = client.timeTravel.getBalanceHistory("wallet_address", samples = 30).result
+
+history?.forEach { point ->
+    val slot = point.jsonObject["slot"]?.jsonPrimitive?.long
+    val balance = point.jsonObject["balanceSol"]?.jsonPrimitive?.double
+    println("Slot $slot: $balance SOL")
+}
+```
+
+---
+
+## Batch Operations API (v3.0 - NEW!)
+
+Access via `client.batch`.
+
+High-throughput operations for multi-address queries.
+
+### Methods
+
+*   **`getBalances(addresses)`**: Get balances for multiple addresses.
+*   **`getAssetsForMultiple(addresses, limitPerAddress)`**: Get assets for multiple wallets.
+*   **`getTokenBalances(owner, mints)`**: Check multiple token balances.
+*   **`analyzeMultipleWallets(addresses)`**: Batch risk analysis.
+
+### Example
+
+```kotlin
+// Get balances for many addresses
+val addresses = listOf("wallet1", "wallet2", "wallet3")
+val balances = client.batch.getBalances(addresses).result
+
+balances?.forEach { (address, lamports) ->
+    println("$address: ${lamports / 1_000_000_000.0} SOL")
+}
+
+// Batch risk analysis
+val riskScores = client.batch.analyzeMultipleWallets(addresses).result
+
+riskScores?.forEach { (address, risk) ->
+    println("$address: Risk Level = ${risk.riskLevel}")
+}
+
+// Check specific token balances
+val tokenBalances = client.batch.getTokenBalances(
+    owner = "wallet_address",
+    mints = listOf("token1_mint", "token2_mint")
+).result
+
+tokenBalances?.forEach { (mint, balance) ->
+    println("$mint: $balance")
+}
+```
+
+---
+
+## API Summary
+
+| Namespace | Methods | Description |
+| :--- | :--- | :--- |
+| `client.das` | 12 | Digital Asset Standard API |
+| `client.rpc` | 6 | Enhanced RPC V2 Methods |
+| `client.solana` | 45+ | Standard Solana RPC |
+| `client.staking` | 9 | Staking operations |
+| `client.tx` | 8 | Transaction helpers |
+| `client.sender` | 2 | Ultra-low latency sending |
+| `client.priority` | 1 | Fee estimation |
+| `client.enhanced` | 2 | Parsed transactions |
+| `client.webhooks` | 5 | Webhook management |
+| `client.ws` | 20+ | WebSocket subscriptions |
+| `client.zk` | 22 | ZK Compression |
+| `client.laser` | 3 | LaserStream config |
+| `client.niche` | 6 | Composite endpoints |
+| `client.sns` | 2 | Domain resolution |
+| `client.mobile` | 5 | Android utilities |
+| `client.memo` | 1 | Memo extraction |
+| `client.jupiter` | 6 | DEX aggregation |
+| `client.token2022` | 4 | Token Extensions |
+| `client.privacy` | 4 | Privacy analysis |
+| `client.analytics` | 4 | Wallet intelligence |
+| `client.walletAdapter` | 5 | MWA bridge |
+| `client.mint` | 3 | Token/NFT creation |
+| `client.validatorAcl` | 3 | Validator filtering |
+| **`client.history`** | **10** | **Transaction History Builder** ⭐ NEW |
+| **`client.funding`** | **3** | **Funding Source Tracker** ⭐ NEW |
+| **`client.tokenLaunch`** | **3** | **Token Launch Detection** ⭐ NEW |
+| **`client.correlation`** | **2** | **Wallet Correlation** ⭐ NEW |
+| **`client.timeTravel`** | **3** | **Historical State** ⭐ NEW |
+| **`client.batch`** | **4** | **Batch Operations** ⭐ NEW |
+
+**Total: 200+ Methods across 29 API Namespaces**
 
