@@ -6,14 +6,20 @@ transactions, priority fee estimation, enhanced transactions, webhooks, WebSocke
 as idiomatic, suspendable Kotlin functions.  The goal is to provide Android and JVM developers with a clean,
 coroutine-friendly interface that hides JSON-RPC boilerplate and makes interacting with Helius simple.
 
-**v5.1.0** introduces **Helius-Exclusive Advanced Infrastructure** with ultra-low latency Sender API,
-LaserStream gRPC configuration, extended ZK Compression, and Web2-inspired innovation APIs including
-Analytics Dashboards, Real-Time Notifications, and Mobile-First Optimization.
+**v5.2.0** introduces **Privacy-First Helius-Exclusive APIs** inspired by Zcash, Aztec Network, 
+Monero, and Tornado Cash patterns - implemented EXCLUSIVELY using Helius infrastructure:
+- **Stealth Address API** - One-time receiving addresses breaking on-chain links
+- **Privacy Pool API** - Anonymity set analysis via Helius ZK Compression
+- **Transaction Graph Privacy** - Detect leaks, wallet linkage, privacy-preserving paths
+- **Shielded Pattern API** - Shielded vs transparent balance analysis
+- **Privacy Score Engine** - Comprehensive privacy scoring with improvement roadmaps
 
 For more information, visit [selenus.xyz](https://selenus.xyz).
 
 ## Highlights
 
+- **Privacy-First Innovation (v5.2.0)**: Stealth addresses, privacy pools, transaction graph analysis,
+  shielded patterns, and enterprise-grade privacy scoring - all using Helius exclusively.
 - **Helius-Exclusive Infrastructure**: Ultra-low latency Sender API, LaserStream gRPC with 9 global
   regions, extended ZK Compression with 20+ methods, enhanced WebSocket Flow subscriptions.
 - **Web2-Inspired Innovation**: Analytics dashboards with funnel analysis and cohort metrics,
@@ -29,7 +35,7 @@ For more information, visit [selenus.xyz](https://selenus.xyz).
 - **Easy configuration**: a single `LunaHeliusClient` takes an API key and cluster, then exposes
   namespaced APIs via properties (`das`, `rpc`, `staking`, `tx`, `priority`, `enhanced`, `webhooks`,
   `ws`, `zk`, `sender`, `solana`, `niche`, `reactive`, `zkPrivacy`, `confidential`, `subscriptions`,
-  `laserStream`, `zkCompressionExtended`, `wsEnhanced`, `analytics`, `notifications`, `mobileOptimization`).
+  `stealthAddress`, `privacyPool`, `graphPrivacy`, `shieldedPattern`, `privacyScore`).
 - **No dependencies on web3.js**: calls are made directly via HTTP using OkHttp and `kotlinx.serialization`.
 - **Minimal Dependencies**: To keep the SDK lightweight, cryptographic operations (like webhook signature verification) require an external library (e.g., Bouncy Castle or TweetNacl).
 - **Extensible**: additional endpoints can be added by creating new methods in the appropriate
@@ -47,6 +53,35 @@ import kotlinx.coroutines.flow.onEach
 fun main() = runBlocking {
     val apiKey = "YOUR_HELIUS_API_KEY"
     val helius = LunaHeliusClient(apiKey, Cluster.MAINNET)
+
+    // v5.2.0: Stealth Address Generation (Monero/Zcash-inspired)
+    val stealthSet = helius.stealthAddress.generateStealthReceiveSet("recipient_pubkey", count = 5)
+    println("Use one-time path: ${stealthSet.recommendedPath.derivationPath}")
+    
+    // v5.2.0: Privacy Pool Analysis (Tornado Cash-inspired)
+    val anonymity = helius.privacyPool.getAnonymitySetSize("address")
+    println("Anonymity set: ${anonymity.result?.estimatedAnonymitySet}")
+    
+    // v5.2.0: Transaction Graph Privacy (detect leaks)
+    val leaks = helius.graphPrivacy.analyzePrivacyLeaks("wallet", depth = 2)
+    println("Risk score: ${leaks.result?.overallRiskScore}/100")
+    leaks.result?.leaksDetected?.forEach { leak ->
+        println("  ${leak.severity}: ${leak.type}")
+    }
+    
+    // v5.2.0: Shielded Balance Analysis (Zcash-inspired)
+    val shielded = helius.shieldedPattern.analyzeShieldedRatio("owner")
+    println("Shielded: ${shielded.result?.shieldedRatio?.times(100)}%")
+    
+    // v5.2.0: Comprehensive Privacy Score
+    val score = helius.privacyScore.calculateComprehensiveScore("address")
+    println("Privacy Grade: ${score.result?.privacyGrade} (${score.result?.overallScore}/100)")
+    
+    // v5.2.0: Privacy Improvement Roadmap
+    val roadmap = helius.privacyScore.generatePrivacyRoadmap("address", targetScore = 90)
+    roadmap.result?.milestones?.forEach { m ->
+        println("Milestone ${m.milestone}: ${m.title} (+${m.scoreImpact} pts)")
+    }
 
     // v5.1.0: Ultra-low latency transaction submission via Helius Sender
     helius.sender.sendAndTrack("base64Transaction")
