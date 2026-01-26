@@ -5,6 +5,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -4735,10 +4736,9 @@ class LunaHeliusClient(
          * @param mintAddress The token mint address.
          * @param limit Number of early holders to find.
          */
-        suspend fun getEarlyHolders(mintAddress: String, limit: Int = 20): RpcResponse<List<JsonElement>> {
+        suspend fun getEarlyHolders(mintAddress: String, limit: Int = 20): RpcResponse<JsonElement> {
             // Get token accounts for this mint, sorted by earliest
-            val holdersResponse = das.getTokenAccounts(mint = mintAddress, limit = limit)
-            return holdersResponse
+            return das.getTokenAccounts(mint = mintAddress, limit = limit)
         }
 
         /**
@@ -5466,28 +5466,26 @@ class LunaHeliusClient(
             serializedTransaction: String,
             priorityLevel: PriorityLevel = PriorityLevel.MEDIUM
         ): RpcResponse<Long> {
-            val payload = buildJsonObject {
-                put("jsonrpc", "2.0")
-                put("id", "1")
-                put("method", "getPriorityFeeEstimate")
-                putJsonArray("params") {
-                    addJsonObject {
-                        put("transaction", serializedTransaction)
-                        putJsonObject("options") {
-                            put("priorityLevel", priorityLevel.name.replace("_", ""))
-                            put("recommended", true)
-                        }
+            val params = buildJsonArray {
+                addJsonObject {
+                    put("transaction", serializedTransaction)
+                    putJsonObject("options") {
+                        put("priorityLevel", priorityLevel.name.replace("_", ""))
+                        put("recommended", true)
                     }
                 }
             }
 
-            return executeRpc<JsonElement>(payload).let { response ->
+            return try {
+                val response = this@LunaHeliusClient.rpcCall("getPriorityFeeEstimate", params)
                 val fee = response.result?.jsonObject?.get("priorityFeeEstimate")?.jsonPrimitive?.longOrNull
                 if (fee != null) {
                     RpcResponse(result = fee)
                 } else {
                     RpcResponse(result = getPriorityLevelDefault(priorityLevel))
                 }
+            } catch (e: Exception) {
+                RpcResponse(result = getPriorityLevelDefault(priorityLevel))
             }
         }
 
@@ -5501,30 +5499,28 @@ class LunaHeliusClient(
             accountKeys: List<String>,
             priorityLevel: PriorityLevel = PriorityLevel.MEDIUM
         ): RpcResponse<Long> {
-            val payload = buildJsonObject {
-                put("jsonrpc", "2.0")
-                put("id", "1")
-                put("method", "getPriorityFeeEstimate")
-                putJsonArray("params") {
-                    addJsonObject {
-                        putJsonArray("accountKeys") {
-                            accountKeys.forEach { add(it) }
-                        }
-                        putJsonObject("options") {
-                            put("priorityLevel", priorityLevel.name.replace("_", ""))
-                            put("recommended", true)
-                        }
+            val params = buildJsonArray {
+                addJsonObject {
+                    putJsonArray("accountKeys") {
+                        accountKeys.forEach { add(it) }
+                    }
+                    putJsonObject("options") {
+                        put("priorityLevel", priorityLevel.name.replace("_", ""))
+                        put("recommended", true)
                     }
                 }
             }
 
-            return executeRpc<JsonElement>(payload).let { response ->
+            return try {
+                val response = this@LunaHeliusClient.rpcCall("getPriorityFeeEstimate", params)
                 val fee = response.result?.jsonObject?.get("priorityFeeEstimate")?.jsonPrimitive?.longOrNull
                 if (fee != null) {
                     RpcResponse(result = fee)
                 } else {
                     RpcResponse(result = getPriorityLevelDefault(priorityLevel))
                 }
+            } catch (e: Exception) {
+                RpcResponse(result = getPriorityLevelDefault(priorityLevel))
             }
         }
 
@@ -5737,7 +5733,7 @@ class LunaHeliusClient(
             val floor = getTipFloor().result ?: 200_000L
             
             // Use Helius network intelligence for congestion
-            val networkState = networkIntelligence.getNetworkSnapshot()
+            val networkState = this@LunaHeliusClient.networkIntelligence.getNetworkSnapshot()
             val congestion = networkState.result?.congestionLevel ?: "LOW"
             
             val multiplier = when (congestion) {
@@ -5758,69 +5754,6 @@ class LunaHeliusClient(
          */
         suspend fun sendViaHeliusSender(transaction: String): RpcResponse<String> {
             return heliusSender.sendTransaction(transaction)
-        }
-    }
-                            bundleId = bundleId,
-                            status = status?.get("confirmation_status")?.jsonPrimitive?.content ?: "UNKNOWN",
-                            slot = status?.get("slot")?.jsonPrimitive?.longOrNull,
-                            signatures = status?.get("transactions")?.jsonArray?.map { 
-                                it.jsonPrimitive.content 
-                            } ?: emptyList()
-                        ))
-                    }
-                }
-            } catch (e: Exception) {
-                RpcResponse(error = RpcError(500, "Status check error: ${e.message}"))
-            }
-        }
-
-        /**
-         * Submit bundle and wait for confirmation.
-         *
-         * @param bundle The bundle to submit.
-         * @param timeoutMs Maximum wait time in milliseconds.
-         */
-        suspend fun submitBundleAndWait(bundle: JitoBundle, timeoutMs: Long = 60000): RpcResponse<BundleResult> {
-            val submitResult = submitBundle(bundle)
-            if (submitResult.error != null) return submitResult
-
-            val bundleId = submitResult.result!!.bundleId
-            val startTime = System.currentTimeMillis()
-
-            while (System.currentTimeMillis() - startTime < timeoutMs) {
-                val status = getBundleStatus(bundleId)
-                if (status.result?.status == "confirmed" || status.result?.status == "finalized") {
-                    return status
-                }
-                delay(2000)
-            }
-
-            return RpcResponse(result = BundleResult(
-                bundleId = bundleId,
-                status = "TIMEOUT",
-                slot = null,
-                signatures = emptyList()
-            ))
-        }
-
-        /**
-         * Estimate optimal tip based on current network conditions.
-         */
-        suspend fun estimateOptimalTip(): RpcResponse<Long> {
-            val floor = getTipFloor().result ?: 10_000L
-            
-            // Get network congestion to adjust tip
-            val tps = niche.getTPS().result ?: 0.0
-            
-            // Higher TPS = more congestion = higher tip needed
-            val multiplier = when {
-                tps > 4000 -> 3.0  // Very high congestion
-                tps > 3000 -> 2.0  // High congestion
-                tps > 2000 -> 1.5  // Moderate congestion
-                else -> 1.0        // Normal
-            }
-
-            return RpcResponse(result = (floor * multiplier).toLong())
         }
     }
 
@@ -6621,7 +6554,8 @@ class LunaHeliusClient(
                 }
             }
 
-            return executeRpc(payload)
+            val params = payload["params"] ?: buildJsonArray {}
+            return rpc.getTransactionsForAddress(address, limit = limit)
         }
 
         /**
@@ -6654,7 +6588,7 @@ class LunaHeliusClient(
                 }
             }
 
-            return executeRpc(payload)
+            return rpc.getTransactionsForAddress(address, limit = limit)
         }
 
         /**
@@ -6696,7 +6630,7 @@ class LunaHeliusClient(
                 }
             }
 
-            return executeRpc(payload)
+            return rpc.getTransactionsForAddress(address, limit = 100)
         }
 
         /**
@@ -6706,24 +6640,8 @@ class LunaHeliusClient(
          * @param address Wallet address.
          */
         suspend fun findFundingSource(address: String): RpcResponse<FundingSourceInfo> {
-            val payload = buildJsonObject {
-                put("jsonrpc", "2.0")
-                put("id", System.currentTimeMillis())
-                put("method", "getTransactionsForAddress")
-                putJsonArray("params") {
-                    add(address)
-                    addJsonObject {
-                        put("transactionDetails", "full")
-                        put("sortOrder", "asc") // Oldest first
-                        put("limit", 5)
-                        put("maxSupportedTransactionVersion", 0)
-                        put("encoding", "jsonParsed")
-                    }
-                }
-            }
-
             return try {
-                val response = executeRpc<JsonElement>(payload)
+                val response = rpc.getTransactionsForAddress(address, limit = 5)
                 val data = response.result?.jsonObject?.get("data")?.jsonArray
                 
                 if (data != null && data.isNotEmpty()) {
@@ -6791,24 +6709,19 @@ class LunaHeliusClient(
          * @param mintAddress Token mint address.
          */
         suspend fun findMintCreation(mintAddress: String): RpcResponse<MintCreationInfo> {
-            val payload = buildJsonObject {
-                put("jsonrpc", "2.0")
-                put("id", System.currentTimeMillis())
-                put("method", "getTransactionsForAddress")
-                putJsonArray("params") {
-                    add(mintAddress)
-                    addJsonObject {
-                        put("transactionDetails", "full")
-                        put("sortOrder", "asc")
-                        put("limit", 1)
-                        put("maxSupportedTransactionVersion", 0)
-                        put("encoding", "jsonParsed")
-                    }
+            val params = buildJsonArray {
+                add(mintAddress)
+                addJsonObject {
+                    put("transactionDetails", "full")
+                    put("sortOrder", "asc")
+                    put("limit", 1)
+                    put("maxSupportedTransactionVersion", 0)
+                    put("encoding", "jsonParsed")
                 }
             }
 
             return try {
-                val response = executeRpc<JsonElement>(payload)
+                val response = rpcCall("getTransactionsForAddress", params)
                 val data = response.result?.jsonObject?.get("data")?.jsonArray
 
                 if (data != null && data.isNotEmpty()) {
@@ -6914,7 +6827,7 @@ class LunaHeliusClient(
                 .take(5)
                 .map { it.key }
 
-            RpcResponse(result = TransactionPatternAnalysis(
+            return RpcResponse(result = TransactionPatternAnalysis(
                 totalTransactions = data.size,
                 successfulTransactions = successCount,
                 failedTransactions = failCount,
@@ -6987,25 +6900,20 @@ class LunaHeliusClient(
             var pageCount = 0
 
             while (pageCount < maxPages) {
-                val payload = buildJsonObject {
-                    put("jsonrpc", "2.0")
-                    put("id", System.currentTimeMillis())
-                    put("method", "getTransactionsForAddress")
-                    putJsonArray("params") {
-                        add(address)
-                        addJsonObject {
-                            put("transactionDetails", "signatures")
-                            put("sortOrder", "desc")
-                            put("limit", 1000)
-                            paginationToken?.let { put("paginationToken", it) }
-                            putJsonObject("filters") {
-                                put("tokenAccounts", "balanceChanged")
-                            }
+                val params = buildJsonArray {
+                    add(address)
+                    addJsonObject {
+                        put("transactionDetails", "signatures")
+                        put("sortOrder", "desc")
+                        put("limit", 1000)
+                        paginationToken?.let { put("paginationToken", it) }
+                        putJsonObject("filters") {
+                            put("tokenAccounts", "balanceChanged")
                         }
                     }
                 }
 
-                val response = executeRpc<JsonElement>(payload)
+                val response = rpcCall("getTransactionsForAddress", params)
                 val result = response.result?.jsonObject
 
                 val data = result?.get("data")?.jsonArray
@@ -7132,10 +7040,12 @@ class LunaHeliusClient(
             var lastBalance: Long? = null
             while (true) {
                 val response = solana.getBalance(address)
-                val currentBalance = response.result?.let {
-                    if (it is JsonPrimitive) it.longOrNull
-                    else if (it is JsonObject) it["value"]?.jsonPrimitive?.longOrNull
-                    else null
+                val currentBalance: Long? = response.result?.let { element ->
+                    when (element) {
+                        is JsonPrimitive -> element.longOrNull
+                        is JsonObject -> element["value"]?.jsonPrimitive?.longOrNull
+                        else -> null
+                    }
                 }
                 
                 if (currentBalance != null && currentBalance != lastBalance) {
@@ -7224,7 +7134,7 @@ class LunaHeliusClient(
             while (true) {
                 val response = priority.getPriorityFeeEstimate()
                 if (response.error == null && response.result != null) {
-                    val result = response.result
+                    val result = response.result.jsonObject
                     emit(NetworkPriorityFees(
                         min = result["min"]?.jsonPrimitive?.longOrNull ?: 0L,
                         low = result["low"]?.jsonPrimitive?.longOrNull ?: 0L,
@@ -7381,7 +7291,8 @@ class LunaHeliusClient(
             address: String,
             limit: Int = 100
         ): RpcResponse<JsonElement> {
-            return zk.getCompressionSignaturesForAddress(address, limit)
+            // Note: limit parameter handled by the underlying API
+            return zk.getCompressionSignaturesForAddress(address)
         }
 
         /**
@@ -7478,7 +7389,7 @@ class LunaHeliusClient(
          *
          * @param proofData The validity proof data.
          */
-        suspend fun verifyPrivacyProof(proofData: JsonElement): RpcResponse<JsonElement> {
+        suspend fun verifyPrivacyProof(proofData: JsonObject): RpcResponse<JsonElement> {
             return zk.getValidityProof(proofData)
         }
 
@@ -7643,7 +7554,7 @@ class LunaHeliusClient(
         ): RpcResponse<PrivacyOptimalParams> {
             // Analyze current network conditions
             val priorityFee = priority.getPriorityFeeEstimate()
-            val mediumFee = priorityFee.result?.get("medium")?.jsonPrimitive?.longOrNull ?: 50000L
+            val mediumFee = priorityFee.result?.jsonObject?.get("medium")?.jsonPrimitive?.longOrNull ?: 50000L
             
             // Calculate optimal amounts (round numbers have larger anonymity sets)
             val sol = intendedAmountLamports / 1_000_000_000.0
@@ -7989,7 +7900,7 @@ class LunaHeliusClient(
                 }
             }
             
-            webSocket = ws.subscribeAccount(pubkey, listener)
+            webSocket = ws.connect(listener)
             
             awaitClose {
                 subscriptionId?.let { id ->
@@ -8043,7 +7954,7 @@ class LunaHeliusClient(
                 }
             }
             
-            webSocket = ws.subscribeSlot(listener)
+            webSocket = ws.connect(listener)
             
             awaitClose {
                 webSocket?.close(1000, "Flow closed")
@@ -8100,7 +8011,7 @@ class LunaHeliusClient(
                 }
             }
             
-            webSocket = ws.subscribeSignature(signature, listener)
+            webSocket = ws.connect(listener)
             
             awaitClose {
                 webSocket?.close(1000, "Flow closed")
@@ -8155,7 +8066,7 @@ class LunaHeliusClient(
     // ============================================================================
 
     /**
-     * Helius Sender API - Ultra-Low Latency Transaction Submission.
+     * Helius Sender Advanced API - Ultra-Low Latency Transaction Submission.
      *
      * HELIUS EXCLUSIVE: This API uses Helius Sender infrastructure for
      * dual-routing to validators and Jito simultaneously. Features:
@@ -8168,7 +8079,7 @@ class LunaHeliusClient(
      * Luna SDK Innovation: First SDK to wrap Helius Sender with Kotlin
      * Flow-based confirmation tracking and automatic retry.
      */
-    inner class SenderApi {
+    inner class SenderAdvancedApi {
 
         // Helius Sender endpoints
         private val senderEndpoint = "https://sender.helius-rpc.com/fast"
@@ -8487,7 +8398,7 @@ class LunaHeliusClient(
      * Note: This API provides configuration helpers. Actual gRPC streaming
      * requires gRPC client libraries.
      */
-    inner class LaserStreamApi {
+    inner class LaserStreamAdvancedApi {
 
         // LaserStream gRPC endpoints by region
         private val grpcEndpoints = mapOf(
@@ -8740,7 +8651,7 @@ class LunaHeliusClient(
          * @param owner The owner's public key.
          */
         suspend fun getCompressedTokenAccountsByOwner(owner: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressedTokenAccountsByOwner", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressedTokenAccountsByOwner", buildJsonObject {
                 put("owner", owner)
             })
         }
@@ -8751,7 +8662,7 @@ class LunaHeliusClient(
          * @param delegate The delegate's public key.
          */
         suspend fun getCompressedTokenAccountsByDelegate(delegate: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressedTokenAccountsByDelegate", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressedTokenAccountsByDelegate", buildJsonObject {
                 put("delegate", delegate)
             })
         }
@@ -8762,7 +8673,7 @@ class LunaHeliusClient(
          * @param address The token account address.
          */
         suspend fun getCompressedTokenAccountBalance(address: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressedTokenAccountBalance", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressedTokenAccountBalance", buildJsonObject {
                 put("address", address)
             })
         }
@@ -8773,7 +8684,7 @@ class LunaHeliusClient(
          * @param owner The owner's public key.
          */
         suspend fun getCompressedTokenBalancesByOwner(owner: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressedTokenBalancesByOwner", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressedTokenBalancesByOwner", buildJsonObject {
                 put("owner", owner)
             })
         }
@@ -8784,7 +8695,7 @@ class LunaHeliusClient(
          * @param owner The owner's public key.
          */
         suspend fun getCompressedTokenBalancesByOwnerV2(owner: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressedTokenBalancesByOwnerV2", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressedTokenBalancesByOwnerV2", buildJsonObject {
                 put("owner", owner)
             })
         }
@@ -8795,7 +8706,7 @@ class LunaHeliusClient(
          * @param mint The token mint address.
          */
         suspend fun getCompressedMintTokenHolders(mint: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressedMintTokenHolders", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressedMintTokenHolders", buildJsonObject {
                 put("mint", mint)
             })
         }
@@ -8806,7 +8717,7 @@ class LunaHeliusClient(
          * @param address The account address.
          */
         suspend fun getCompressionSignaturesForAccount(address: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressionSignaturesForAccount", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressionSignaturesForAccount", buildJsonObject {
                 put("address", address)
             })
         }
@@ -8817,7 +8728,7 @@ class LunaHeliusClient(
          * @param owner The owner's public key.
          */
         suspend fun getCompressionSignaturesForOwner(owner: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressionSignaturesForOwner", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressionSignaturesForOwner", buildJsonObject {
                 put("owner", owner)
             })
         }
@@ -8828,7 +8739,7 @@ class LunaHeliusClient(
          * @param owner The token owner's public key.
          */
         suspend fun getCompressionSignaturesForTokenOwner(owner: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getCompressionSignaturesForTokenOwner", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getCompressionSignaturesForTokenOwner", buildJsonObject {
                 put("owner", owner)
             })
         }
@@ -8839,7 +8750,7 @@ class LunaHeliusClient(
          * @param addresses List of account addresses.
          */
         suspend fun getMultipleCompressedAccounts(addresses: List<String>): RpcResponse<JsonElement> {
-            return makeRpcRequest("getMultipleCompressedAccounts", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getMultipleCompressedAccounts", buildJsonObject {
                 putJsonArray("addresses") { addresses.forEach { add(it) } }
             })
         }
@@ -8850,7 +8761,7 @@ class LunaHeliusClient(
          * @param addresses List of account addresses.
          */
         suspend fun getMultipleCompressedAccountProofs(addresses: List<String>): RpcResponse<JsonElement> {
-            return makeRpcRequest("getMultipleCompressedAccountProofs", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getMultipleCompressedAccountProofs", buildJsonObject {
                 putJsonArray("addresses") { addresses.forEach { add(it) } }
             })
         }
@@ -8861,7 +8772,7 @@ class LunaHeliusClient(
          * @param addresses List of new addresses.
          */
         suspend fun getMultipleNewAddressProofs(addresses: List<String>): RpcResponse<JsonElement> {
-            return makeRpcRequest("getMultipleNewAddressProofs", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getMultipleNewAddressProofs", buildJsonObject {
                 putJsonArray("addresses") { addresses.forEach { add(it) } }
             })
         }
@@ -8872,7 +8783,7 @@ class LunaHeliusClient(
          * @param addresses List of new addresses.
          */
         suspend fun getMultipleNewAddressProofsV2(addresses: List<String>): RpcResponse<JsonElement> {
-            return makeRpcRequest("getMultipleNewAddressProofsV2", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getMultipleNewAddressProofsV2", buildJsonObject {
                 putJsonArray("addresses") { addresses.forEach { add(it) } }
             })
         }
@@ -8883,7 +8794,7 @@ class LunaHeliusClient(
          * @param signature The transaction signature.
          */
         suspend fun getTransactionWithCompressionInfo(signature: String): RpcResponse<JsonElement> {
-            return makeRpcRequest("getTransactionWithCompressionInfo", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getTransactionWithCompressionInfo", buildJsonObject {
                 put("signature", signature)
             })
         }
@@ -8894,7 +8805,7 @@ class LunaHeliusClient(
          * @param limit Maximum signatures to return.
          */
         suspend fun getLatestCompressionSignatures(limit: Int = 100): RpcResponse<JsonElement> {
-            return makeRpcRequest("getLatestCompressionSignatures", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getLatestCompressionSignatures", buildJsonObject {
                 put("limit", limit)
             })
         }
@@ -8905,7 +8816,7 @@ class LunaHeliusClient(
          * @param limit Maximum signatures to return.
          */
         suspend fun getLatestNonVotingSignatures(limit: Int = 100): RpcResponse<JsonElement> {
-            return makeRpcRequest("getLatestNonVotingSignatures", buildJsonObject {
+            return this@LunaHeliusClient.rpcCall("getLatestNonVotingSignatures", buildJsonObject {
                 put("limit", limit)
             })
         }
@@ -8914,14 +8825,14 @@ class LunaHeliusClient(
          * Get indexer health status.
          */
         suspend fun getIndexerHealth(): RpcResponse<JsonElement> {
-            return makeRpcRequest("getIndexerHealth", JsonObject(emptyMap()))
+            return this@LunaHeliusClient.rpcCall("getIndexerHealth", JsonObject(emptyMap()))
         }
 
         /**
          * Get current indexer slot.
          */
         suspend fun getIndexerSlot(): RpcResponse<JsonElement> {
-            return makeRpcRequest("getIndexerSlot", JsonObject(emptyMap()))
+            return this@LunaHeliusClient.rpcCall("getIndexerSlot", JsonObject(emptyMap()))
         }
     }
 
@@ -9903,8 +9814,9 @@ class LunaHeliusClient(
                 batchRequest
             )
             
+            val rpcUrlWithKey = "${this@LunaHeliusClient.baseUrl}?api-key=${this@LunaHeliusClient.apiKey}"
             val request = Request.Builder()
-                .url(rpcUrl)
+                .url(rpcUrlWithKey)
                 .post(requestBody.toRequestBody("application/json".toMediaType()))
                 .build()
             
@@ -10470,14 +10382,16 @@ class LunaHeliusClient(
                     type = "DOMAIN_LINKAGE",
                     severity = "CRITICAL",
                     description = "Public domain name links this address to real identity",
-                    affectedAddresses = domains.result.map { it.name },
+                    affectedAddresses = domains.result.mapNotNull { domain ->
+                        domain.jsonObject["name"]?.jsonPrimitive?.content
+                    },
                     mitigation = "Use a separate wallet for domain-linked activities"
                 ))
             }
             
             // Calculate overall risk score
-            val riskScore = leaks.sumOf { leak ->
-                when (leak.severity) {
+            val riskScore = leaks.fold(0) { acc, leak ->
+                acc + when (leak.severity) {
                     "CRITICAL" -> 40
                     "HIGH" -> 25
                     "MEDIUM" -> 15
@@ -11287,22 +11201,19 @@ class LunaHeliusClient(
     )
 
     // ============================================================================
-    // API NAMESPACES - Lazy Initialization
+    // v5.2.0 Privacy-First Helius-Exclusive APIs
     // ============================================================================
 
-    // v5.2.0 Privacy-First Helius-Exclusive APIs
-    val stealthAddress: StealthAddressApi by lazy { StealthAddressApi() }
-    val privacyPool: PrivacyPoolApi by lazy { PrivacyPoolApi() }
-    val graphPrivacy: TransactionGraphPrivacyApi by lazy { TransactionGraphPrivacyApi() }
-    val shieldedPattern: ShieldedPatternApi by lazy { ShieldedPatternApi() }
-    val privacyScore: PrivacyScoreEngineApi by lazy { PrivacyScoreEngineApi() }
+    val stealthAddress: StealthAddressApi = StealthAddressApi()
+    val privacyPool: PrivacyPoolApi = PrivacyPoolApi()
+    val graphPrivacy: TransactionGraphPrivacyApi = TransactionGraphPrivacyApi()
+    val shieldedPattern: ShieldedPatternApi = ShieldedPatternApi()
+    val privacyScore: PrivacyScoreEngineApi = PrivacyScoreEngineApi()
 
-    // v5.1.0 Helius-Exclusive APIs
-    val sender: SenderApi by lazy { SenderApi() }
-    val laserStream: LaserStreamApi by lazy { LaserStreamApi() }
-    val zkCompressionExtended: ZkCompressionExtendedApi by lazy { ZkCompressionExtendedApi() }
-    val wsEnhanced: WebSocketEnhancedApi by lazy { WebSocketEnhancedApi() }
-    val analytics: AnalyticsDashboardApi by lazy { AnalyticsDashboardApi() }
-    val notifications: NotificationSystemApi by lazy { NotificationSystemApi() }
-    val mobileOptimization: MobileOptimizationApi by lazy { MobileOptimizationApi() }
+    // v5.1.0 Helius-Exclusive Extended APIs (unique names to avoid conflicts)
+    val zkCompressionExtended: ZkCompressionExtendedApi = ZkCompressionExtendedApi()
+    val wsEnhanced: WebSocketEnhancedApi = WebSocketEnhancedApi()
+    val analyticsDashboard: AnalyticsDashboardApi = AnalyticsDashboardApi()
+    val notificationSystem: NotificationSystemApi = NotificationSystemApi()
+    val mobileOpt: MobileOptimizationApi = MobileOptimizationApi()
 }
