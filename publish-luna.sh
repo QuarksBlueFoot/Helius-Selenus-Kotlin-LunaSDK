@@ -33,6 +33,9 @@ fi
 VERSION=$(grep "VERSION_NAME" gradle.properties | cut -d'=' -f2)
 echo "Detected version: $VERSION"
 
+# Remove any local Java home setting from gradle.properties (CI provides its own Java)
+sed -i '/org.gradle.java.home/d' gradle.properties
+
 echo "1. Cleaning and Building Staging Repository..."
 rm -rf luna-sdk/build
 ./gradlew :luna-sdk:clean :luna-sdk:publishMavenPublicationToStagingRepository -Pversion=$VERSION --no-daemon || exit 1
