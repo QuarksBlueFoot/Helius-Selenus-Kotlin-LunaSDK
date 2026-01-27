@@ -51,7 +51,7 @@ export class MintApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as MintResponse;
       return { result: data, error: null };
     } catch (error) {
       return {
@@ -83,7 +83,7 @@ export class MintApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as { signature: string };
       return { result: data, error: null };
     } catch (error) {
       return {
@@ -115,7 +115,7 @@ export class MintApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as { signature: string };
       return { result: data, error: null };
     } catch (error) {
       return {

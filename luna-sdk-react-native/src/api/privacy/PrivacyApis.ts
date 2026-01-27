@@ -9,7 +9,7 @@ import type { RpcResponse, StealthAddress, PrivacyScore, GraphPrivacyAnalysis, S
 
 // Stealth Address API
 export class StealthAddressApi {
-  constructor(private readonly client: LunaHeliusClient) {}
+  constructor(private readonly _client: LunaHeliusClient) {}
 
   /** Generate a stealth address for receiving funds privately */
   async generateStealthAddress(recipientViewKey: string): Promise<RpcResponse<StealthAddress>> {
@@ -30,7 +30,7 @@ export class StealthAddressApi {
   }
 
   /** Scan for incoming stealth payments */
-  async scanForPayments(params: {
+  async scanForPayments(_params: {
     viewKey: string;
     startSlot?: number;
     endSlot?: number;
@@ -44,11 +44,11 @@ export class StealthAddressApi {
     return { publicKey: 'ephemeral_pub', privateKey: 'ephemeral_priv' };
   }
 
-  private deriveSharedSecret(privateKey: string, publicKey: string): string {
+  private deriveSharedSecret(_privateKey: string, _publicKey: string): string {
     return 'shared_secret';
   }
 
-  private deriveStealthAddress(sharedSecret: string): string {
+  private deriveStealthAddress(_sharedSecret: string): string {
     return 'stealth_address';
   }
 
@@ -59,7 +59,7 @@ export class StealthAddressApi {
 
 // Privacy Pool API
 export class PrivacyPoolApi {
-  constructor(private readonly client: LunaHeliusClient) {}
+  constructor(private readonly _client: LunaHeliusClient) {}
 
   /** Get available privacy pools */
   async getAvailablePools(): Promise<RpcResponse<any[]>> {
@@ -127,7 +127,7 @@ export class TransactionGraphPrivacyApi {
   }
 
   /** Find connected addresses through graph analysis */
-  async findConnectedAddresses(address: string, depth: number = 2): Promise<RpcResponse<string[]>> {
+  async findConnectedAddresses(_address: string, _depth: number = 2): Promise<RpcResponse<string[]>> {
     // Would traverse transaction graph
     return { result: [], error: null };
   }

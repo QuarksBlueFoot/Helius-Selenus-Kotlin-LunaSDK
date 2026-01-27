@@ -4,7 +4,7 @@
  * Real-time subscriptions for accounts, slots, and transactions
  */
 
-import type { LunaHeliusClient, Cluster } from '../LunaHeliusClient';
+import type { LunaHeliusClient } from '../LunaHeliusClient';
 
 export type SubscriptionCallback<T> = (data: T) => void;
 
@@ -15,7 +15,7 @@ export interface Subscription {
 
 export class WebSocketApi {
   private ws: WebSocket | null = null;
-  private subscriptionId = 0;
+  private _subscriptionId = 0;
   private subscriptions = new Map<number, SubscriptionCallback<any>>();
   private pendingRequests = new Map<string, { resolve: (id: number) => void; reject: (err: Error) => void }>();
   private reconnectAttempts = 0;
@@ -83,7 +83,7 @@ export class WebSocketApi {
           }
         };
 
-        this.ws.onerror = (error) => {
+        this.ws.onerror = (_error) => {
           this.isConnecting = false;
           reject(new Error('WebSocket connection error'));
         };

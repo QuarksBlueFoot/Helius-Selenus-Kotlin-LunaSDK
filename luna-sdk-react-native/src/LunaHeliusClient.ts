@@ -5,7 +5,7 @@
  * Provides a unified interface matching the Kotlin SDK functionality.
  */
 
-import { RpcResponse, RpcError } from './types';
+import { RpcResponse } from './types';
 
 export enum Cluster {
   MAINNET = 'mainnet-beta',
@@ -23,7 +23,7 @@ export interface LunaClientConfig {
 export class LunaHeliusClient {
   private readonly apiKey: string;
   private readonly cluster: Cluster;
-  private readonly timeout: number;
+  private readonly _timeout: number;
   private readonly maxRetries: number;
   private readonly baseUrl: string;
 
@@ -52,7 +52,7 @@ export class LunaHeliusClient {
   constructor(config: LunaClientConfig) {
     this.apiKey = config.apiKey;
     this.cluster = config.cluster ?? Cluster.MAINNET;
-    this.timeout = config.timeout ?? 30000;
+    this._timeout = config.timeout ?? 30000;
     this.maxRetries = config.maxRetries ?? 3;
 
     this.baseUrl = this.getBaseUrl();
@@ -105,7 +105,7 @@ export class LunaHeliusClient {
           continue;
         }
 
-        const json = await response.json();
+        const json = await response.json() as { error?: { code: number; message: string; data?: any }; result?: T };
 
         if (json.error) {
           return {
@@ -118,7 +118,7 @@ export class LunaHeliusClient {
           };
         }
 
-        return { result: json.result, error: null };
+        return { result: json.result ?? null, error: null };
       } catch (error) {
         lastError = error as Error;
         await this.sleep(500 * (attempt + 1));

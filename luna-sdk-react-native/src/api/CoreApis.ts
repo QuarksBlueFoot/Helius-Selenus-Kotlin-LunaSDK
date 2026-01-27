@@ -61,7 +61,7 @@ export class SmartTransactionApi {
     ]);
   }
 
-  async buildOptimizedTransaction(params: {
+  async buildOptimizedTransaction(_params: {
     instructions: any[];
     payer: string;
     priorityLevel?: 'low' | 'medium' | 'high' | 'veryHigh';
@@ -77,7 +77,7 @@ export class SmartTransactionApi {
 export class JupiterApi {
   private readonly baseUrl = 'https://quote-api.jup.ag/v6';
 
-  constructor(private readonly client: LunaHeliusClient) {}
+  constructor(private readonly _client: LunaHeliusClient) {}
 
   async getQuote(params: {
     inputMint: string;

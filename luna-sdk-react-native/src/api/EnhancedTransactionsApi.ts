@@ -42,7 +42,7 @@ export class EnhancedTransactionsApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as EnhancedTransaction[];
       return { result: data, error: null };
     } catch (error) {
       return {
@@ -84,7 +84,7 @@ export class EnhancedTransactionsApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as EnhancedTransaction[];
       return { result: data, error: null };
     } catch (error) {
       return {

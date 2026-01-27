@@ -192,7 +192,7 @@ export class WebhookApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as Webhook[];
       return { result: data, error: null };
     } catch (error) {
       return {
@@ -217,7 +217,7 @@ export class WebhookApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as Webhook;
       return { result: data, error: null };
     } catch (error) {
       return {
@@ -246,7 +246,7 @@ export class WebhookApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as WebhookResponse;
       return { result: data, error: null };
     } catch (error) {
       return {
@@ -278,7 +278,7 @@ export class WebhookApi {
         };
       }
 
-      const data = await response.json();
+      const data = await response.json() as Webhook;
       return { result: data, error: null };
     } catch (error) {
       return {

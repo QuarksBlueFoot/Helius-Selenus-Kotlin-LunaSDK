@@ -5,7 +5,7 @@
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const ALPHABET_MAP = new Map<string, number>();
 for (let i = 0; i < ALPHABET.length; i++) {
-  ALPHABET_MAP.set(ALPHABET[i], i);
+  ALPHABET_MAP.set(ALPHABET.charAt(i), i);
 }
 
 /**
@@ -27,10 +27,10 @@ export function encode(bytes: Uint8Array): string {
   // Process the bytes
   let length = 0;
   for (let i = zeros; i < bytes.length; i++) {
-    let carry = bytes[i];
+    let carry: number = bytes[i]!;
     let j = 0;
     for (let k = size - 1; k >= 0 && (carry !== 0 || j < length); k--, j++) {
-      carry += 256 * b58[k];
+      carry += 256 * (b58[k] ?? 0);
       b58[k] = carry % 58;
       carry = (carry / 58) >>> 0;
     }
@@ -44,9 +44,9 @@ export function encode(bytes: Uint8Array): string {
   }
 
   // Translate the result into a string
-  let result = ALPHABET[0].repeat(zeros);
+  let result = ALPHABET.charAt(0).repeat(zeros);
   for (; start < size; start++) {
-    result += ALPHABET[b58[start]];
+    result += ALPHABET.charAt(b58[start] ?? 0);
   }
 
   return result;
@@ -71,15 +71,15 @@ export function decode(str: string): Uint8Array {
   // Process the characters
   let length = 0;
   for (let i = zeros; i < str.length; i++) {
-    const value = ALPHABET_MAP.get(str[i]);
+    const value = ALPHABET_MAP.get(str.charAt(i));
     if (value === undefined) {
       throw new Error(`Invalid base58 character: ${str[i]}`);
     }
 
-    let carry = value;
+    let carry: number = value;
     let j = 0;
     for (let k = size - 1; k >= 0 && (carry !== 0 || j < length); k--, j++) {
-      carry += 58 * bytes[k];
+      carry += 58 * (bytes[k] ?? 0);
       bytes[k] = carry % 256;
       carry = (carry / 256) >>> 0;
     }
