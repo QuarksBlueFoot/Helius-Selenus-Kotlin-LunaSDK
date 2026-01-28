@@ -32,12 +32,12 @@ class NaturalLanguageBuilder private constructor(
             return NaturalLanguageBuilder(resolver, NlpConfig().apply(config))
         }
         
-        // Regex patterns
-        private const val AMOUNT_PATTERN = """(\d+(?:\.\d+)?(?:[kmb])?|\d{1,3}(?:,\d{3})*(?:\.\d+)?)"""
-        private const val TOKEN_PATTERN = """([a-zA-Z]{2,15})"""
-        private const val DOMAIN_PATTERN = """([a-zA-Z0-9\-]+\.(?:sol|skr))"""
-        private const val BASE58_PATTERN = """([1-9A-HJ-NP-Za-km-z]{32,44})"""
-        private const val ADDRESS_PATTERN = """([a-zA-Z0-9\-]+\.(?:sol|skr)|[1-9A-HJ-NP-Za-km-z]{32,44}|@[a-zA-Z0-9_]+)"""
+        // Regex patterns - NOTE: These are used INSIDE other capturing groups, so don't add capturing parens here
+        private const val AMOUNT_PATTERN = """\d+(?:\.\d+)?(?:[kmb])?|\d{1,3}(?:,\d{3})*(?:\.\d+)?"""
+        private const val TOKEN_PATTERN = """[a-zA-Z]{2,15}"""
+        private const val DOMAIN_PATTERN = """[a-zA-Z0-9\-]+\.(?:sol|skr)"""
+        private const val BASE58_PATTERN = """[1-9A-HJ-NP-Za-km-z]{32,44}"""
+        private const val ADDRESS_PATTERN = """[a-zA-Z0-9\-]+\.(?:sol|skr)|[1-9A-HJ-NP-Za-km-z]{32,44}|@[a-zA-Z0-9_]+"""
     }
     
     // Pattern matchers for different intents
