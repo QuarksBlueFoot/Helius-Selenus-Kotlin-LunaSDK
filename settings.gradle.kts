@@ -31,6 +31,7 @@ include(":luna-analytics")
 include(":luna-innovations")
 include(":luna-privacy")
 include(":luna-jupiter")
+include(":luna-nlp")
 include(":luna-sdk")
 
 // IrisSDK - QuickNode Solana SDK  
