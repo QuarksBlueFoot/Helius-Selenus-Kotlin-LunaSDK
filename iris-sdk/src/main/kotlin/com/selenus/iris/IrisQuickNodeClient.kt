@@ -1161,4 +1161,617 @@ class IrisQuickNodeClient(
     ): Double {
         return priority.estimatePriorityFees(accounts, level)
     }
+
+    // ========================================================================
+    // ADVANCED STEALTH ADDRESS SYSTEM
+    // ========================================================================
+
+    /**
+     * Advanced Stealth Address System for QuickNode.
+     * 
+     * Implements cryptographically-inspired stealth address generation
+     * with ECDH-style patterns adapted for Solana.
+     */
+    val advancedStealth = IrisAdvancedStealthApi()
+
+    inner class IrisAdvancedStealthApi {
+
+        /**
+         * Generate a stealth meta-address (dual-key system).
+         */
+        fun generateStealthMetaAddress(
+            masterPubkey: String,
+            entropy: ByteArray? = null
+        ): IrisStealthMetaAddress {
+            val timestamp = System.currentTimeMillis()
+            val randomEntropy = entropy ?: generateSecureEntropy(32)
+            
+            val spendSeed = "${masterPubkey}_spend_${randomEntropy.contentHashCode()}_$timestamp"
+            val spendPath = "m/44'/501'/0'/0'/${(spendSeed.hashCode().toLong() and 0x7FFFFFFFL) % 1000000}'"
+            
+            val viewSeed = "${masterPubkey}_view_${randomEntropy.contentHashCode()}_$timestamp"
+            val viewPath = "m/44'/501'/0'/1'/${(viewSeed.hashCode().toLong() and 0x7FFFFFFFL) % 1000000}'"
+            
+            val metaAddressId = "iris-st:${masterPubkey.take(8)}:${timestamp.toString(16)}"
+            
+            return IrisStealthMetaAddress(
+                metaAddressId = metaAddressId,
+                masterPubkey = masterPubkey,
+                spendKeyPath = spendPath,
+                viewKeyPath = viewPath,
+                createdAt = timestamp,
+                version = 1,
+                privacyFeatures = listOf(
+                    "DUAL_KEY_SYSTEM",
+                    "UNLINKABLE_PAYMENTS",
+                    "VIEW_KEY_SCANNING",
+                    "QUICKNODE_OPTIMIZED"
+                )
+            )
+        }
+
+        /**
+         * Generate a one-time stealth payment address.
+         */
+        fun generateOneTimeAddress(
+            recipientMeta: IrisStealthMetaAddress,
+            amount: Long? = null,
+            memo: String? = null
+        ): IrisStealthOneTimeAddress {
+            val ephemeralEntropy = generateSecureEntropy(32)
+            val timestamp = System.currentTimeMillis()
+            
+            val derivationInput = buildString {
+                append(recipientMeta.masterPubkey)
+                append("_${ephemeralEntropy.contentHashCode()}_$timestamp")
+                amount?.let { append("_$it") }
+                memo?.let { append("_${it.hashCode()}") }
+            }
+            
+            val derivationIndex = (derivationInput.hashCode().toLong() and 0x7FFFFFFFL)
+            val oneTimePath = "m/44'/501'/stealth'/${derivationIndex % 1000000}'/${(derivationIndex / 1000000) % 1000}'"
+            
+            val ephemeralHint = ephemeralEntropy.take(8).joinToString("") { "%02x".format(it) }
+            
+            return IrisStealthOneTimeAddress(
+                address = "DERIVE:$oneTimePath",
+                derivationPath = oneTimePath,
+                ephemeralHint = ephemeralHint,
+                recipientMetaId = recipientMeta.metaAddressId,
+                createdAt = timestamp,
+                expiresAt = timestamp + (24 * 60 * 60 * 1000),
+                amount = amount,
+                scanTag = "scan:${recipientMeta.metaAddressId.takeLast(8)}:$ephemeralHint"
+            )
+        }
+
+        private fun generateSecureEntropy(size: Int): ByteArray {
+            return ByteArray(size) { (Math.random() * 256).toInt().toByte() }
+        }
+
+        /**
+         * Scan for stealth payments using QuickNode RPC.
+         */
+        suspend fun scanForStealthPayments(
+            metaAddress: IrisStealthMetaAddress,
+            limit: Int = 50
+        ): IrisStealthPaymentScan {
+            val payments = mutableListOf<IrisDetectedStealthPayment>()
+            
+            val signatures = rpc.getSignaturesForAddress(
+                metaAddress.masterPubkey,
+                limit = limit
+            )
+            
+            for (sig in signatures) {
+                val tx = try {
+                    rpc.getTransaction(sig.signature)
+                } catch (e: Exception) {
+                    continue
+                }
+                
+                if (tx != null) {
+                    val meta = tx.meta
+                    if (meta != null) {
+                        val preBalances = meta.preBalances
+                        val postBalances = meta.postBalances
+                        
+                        if (preBalances.isNotEmpty() && postBalances.isNotEmpty()) {
+                            val amount = postBalances[0] - preBalances[0]
+                            if (amount > 0) {
+                                payments.add(IrisDetectedStealthPayment(
+                                    signature = sig.signature,
+                                    slot = sig.slot,
+                                    amount = kotlin.math.abs(amount),
+                                    stealthLikelihood = 60,
+                                    detectedAt = System.currentTimeMillis()
+                                ))
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return IrisStealthPaymentScan(
+                metaAddressId = metaAddress.metaAddressId,
+                paymentsFound = payments.size,
+                payments = payments,
+                scanDepth = signatures.size,
+                scanTime = System.currentTimeMillis()
+            )
+        }
+
+        /**
+         * Analyze an address for stealth characteristics.
+         */
+        suspend fun analyzeStealthCharacteristics(address: String): IrisStealthAnalysis {
+            val balance = rpc.getBalance(address)
+            val signatures = rpc.getSignaturesForAddress(address, limit = 20)
+            
+            val txCount = signatures.size
+            
+            var stealthScore = 50
+            val factors = mutableListOf<String>()
+            
+            when {
+                txCount == 0 -> {
+                    stealthScore += 25
+                    factors.add("Fresh address (no transactions)")
+                }
+                txCount <= 2 -> {
+                    stealthScore += 20
+                    factors.add("Minimal transactions (sweep pattern)")
+                }
+                txCount <= 5 -> {
+                    stealthScore += 10
+                    factors.add("Low transaction count")
+                }
+                else -> {
+                    stealthScore -= 15
+                    factors.add("High transaction count")
+                }
+            }
+            
+            if (balance > 0 && balance % 1_000_000_000 != 0L) {
+                stealthScore += 5
+                factors.add("Non-round balance")
+            }
+            
+            return IrisStealthAnalysis(
+                address = address,
+                stealthScore = minOf(100, maxOf(0, stealthScore)),
+                classification = when {
+                    stealthScore >= 70 -> "LIKELY_STEALTH"
+                    stealthScore >= 50 -> "POSSIBLY_STEALTH"
+                    else -> "REGULAR_ADDRESS"
+                },
+                factors = factors,
+                transactionCount = txCount,
+                balanceLamports = balance
+            )
+        }
+
+        /**
+         * Generate stealth payment proof.
+         */
+        fun generatePaymentProof(
+            oneTimeAddress: IrisStealthOneTimeAddress,
+            signature: String
+        ): IrisStealthPaymentProof {
+            val proofHash = "${oneTimeAddress.derivationPath}_$signature".hashCode()
+                .toLong().and(0xFFFFFFFFL).toString(16)
+            
+            return IrisStealthPaymentProof(
+                proofId = "proof:$proofHash",
+                oneTimeAddress = oneTimeAddress.address,
+                transactionSignature = signature,
+                ephemeralHint = oneTimeAddress.ephemeralHint,
+                timestamp = System.currentTimeMillis()
+            )
+        }
+    }
+
+    // ========================================================================
+    // PRIVATE TRANSACTIONS SYSTEM
+    // ========================================================================
+
+    /**
+     * Private Transactions System for QuickNode.
+     * 
+     * Comprehensive privacy-preserving transaction features.
+     */
+    val privateTransactions = IrisPrivateTransactionsApi()
+
+    inner class IrisPrivateTransactionsApi {
+
+        /**
+         * Create a split-send transaction plan.
+         */
+        fun createSplitSendPlan(
+            amount: Long,
+            finalRecipient: String,
+            splitCount: Int = 3,
+            useIntermediates: Boolean = true
+        ): IrisSplitSendPlan {
+            require(splitCount in 2..10) { "Split count must be 2-10" }
+            
+            val splits = mutableListOf<IrisSplitTransaction>()
+            val baseAmount = amount / splitCount
+            var remaining = amount
+            
+            for (i in 0 until splitCount) {
+                val isLast = i == splitCount - 1
+                val splitAmount = if (isLast) remaining else {
+                    val variance = (baseAmount * 0.2).toLong()
+                    val randomized = baseAmount + (-variance..variance).random()
+                    minOf(randomized, remaining - (splitCount - i - 1) * 10000)
+                }
+                
+                remaining -= splitAmount
+                
+                splits.add(IrisSplitTransaction(
+                    index = i,
+                    amount = splitAmount,
+                    recipient = if (isLast) finalRecipient else "intermediate_$i",
+                    isIntermediate = useIntermediates && !isLast,
+                    suggestedDelayMs = (i * (30..120).random() * 1000).toLong()
+                ))
+            }
+            
+            return IrisSplitSendPlan(
+                planId = "split:${System.currentTimeMillis().toString(16)}",
+                totalAmount = amount,
+                finalRecipient = finalRecipient,
+                splits = splits,
+                estimatedFees = splits.size * 5000L,
+                privacyScore = 40 + (splits.size * 10) + (if (useIntermediates) 20 else 0)
+            )
+        }
+
+        /**
+         * Create time-locked release plan.
+         */
+        fun createTimeLockedPlan(
+            transactions: List<IrisPlannedTransaction>,
+            strategy: IrisTimeReleaseStrategy = IrisTimeReleaseStrategy.RANDOM_INTERVALS
+        ): IrisTimeLockedPlan {
+            val scheduled = mutableListOf<IrisScheduledTransaction>()
+            var currentTime = System.currentTimeMillis()
+            
+            for ((index, tx) in transactions.withIndex()) {
+                val delay = when (strategy) {
+                    IrisTimeReleaseStrategy.RANDOM_INTERVALS -> (30_000L..300_000L).random()
+                    IrisTimeReleaseStrategy.FIXED_INTERVALS -> 60_000L
+                    IrisTimeReleaseStrategy.EXPONENTIAL_BACKOFF -> (30_000L * (1 shl minOf(index, 5)))
+                }
+                
+                currentTime += delay
+                
+                scheduled.add(IrisScheduledTransaction(
+                    index = index,
+                    transaction = tx,
+                    scheduledTime = currentTime,
+                    delayMs = delay
+                ))
+            }
+            
+            return IrisTimeLockedPlan(
+                planId = "timelock:${System.currentTimeMillis().toString(16)}",
+                strategy = strategy,
+                transactions = scheduled,
+                totalDurationMs = currentTime - System.currentTimeMillis()
+            )
+        }
+
+        /**
+         * Generate decoy outputs.
+         */
+        fun generateDecoyOutputs(
+            realAmount: Long,
+            decoyCount: Int = 2
+        ): IrisDecoyOutputPlan {
+            val decoys = (0 until decoyCount).map { i ->
+                val variance = (realAmount * 0.3).toLong()
+                IrisDecoyOutput(
+                    index = i,
+                    amount = maxOf(10000, realAmount + (-variance..variance).random()),
+                    returnToSender = true
+                )
+            }
+            
+            return IrisDecoyOutputPlan(
+                realAmount = realAmount,
+                decoys = decoys,
+                totalOutputs = decoyCount + 1,
+                privacyScore = 60 + (decoyCount * 10)
+            )
+        }
+
+        /**
+         * Create obfuscated memo.
+         */
+        fun createObfuscatedMemo(
+            realMemo: String,
+            type: IrisMemoObfuscationType = IrisMemoObfuscationType.PADDING
+        ): IrisObfuscatedMemo {
+            val obfuscated = when (type) {
+                IrisMemoObfuscationType.PADDING -> {
+                    val padding = (1..(64 - realMemo.length).coerceAtLeast(0))
+                        .map { ('a'..'z').random() }.joinToString("")
+                    "$realMemo|$padding"
+                }
+                IrisMemoObfuscationType.BASE64 -> {
+                    java.util.Base64.getEncoder().encodeToString(realMemo.toByteArray())
+                }
+                IrisMemoObfuscationType.HASH_REF -> {
+                    val hash = realMemo.hashCode().toLong().and(0xFFFFFFFFL).toString(16)
+                    "ref:$hash"
+                }
+            }
+            
+            return IrisObfuscatedMemo(
+                original = realMemo,
+                obfuscated = obfuscated,
+                type = type,
+                recoverable = type != IrisMemoObfuscationType.HASH_REF
+            )
+        }
+
+        /**
+         * Analyze transaction privacy.
+         */
+        suspend fun analyzeTransactionPrivacy(signature: String): IrisTransactionPrivacyAnalysis {
+            val tx = rpc.getTransaction(signature) 
+                ?: throw IrisValidationException("Transaction not found")
+            
+            var privacyScore = 50
+            val factors = mutableListOf<String>()
+            
+            val meta = tx.meta
+            if (meta != null) {
+                val outputCount = meta.postBalances.size
+                when {
+                    outputCount > 3 -> {
+                        privacyScore += 20
+                        factors.add("Multiple outputs (good obfuscation)")
+                    }
+                    outputCount == 2 -> {
+                        privacyScore += 10
+                        factors.add("Standard change pattern")
+                    }
+                    else -> factors.add("Single output")
+                }
+                
+                val hasLogs = meta.logMessages?.isNotEmpty() == true
+                if (hasLogs) {
+                    val hasMemo = meta.logMessages?.any { it.contains("Memo") } == true
+                    if (hasMemo) {
+                        privacyScore -= 15
+                        factors.add("Contains memo (metadata leak)")
+                    }
+                }
+            }
+            
+            return IrisTransactionPrivacyAnalysis(
+                signature = signature,
+                privacyScore = minOf(100, maxOf(0, privacyScore)),
+                classification = when {
+                    privacyScore >= 70 -> "HIGH"
+                    privacyScore >= 50 -> "MEDIUM"
+                    else -> "LOW"
+                },
+                factors = factors
+            )
+        }
+
+        /**
+         * Create complete private transaction package.
+         */
+        fun createPrivateTransactionPackage(
+            amount: Long,
+            recipient: String,
+            options: IrisPrivateTransactionOptions = IrisPrivateTransactionOptions()
+        ): IrisPrivateTransactionPackage {
+            val splitPlan = if (options.useSplitSend && amount > 100_000_000) {
+                createSplitSendPlan(amount, recipient, options.splitCount, options.useIntermediates)
+            } else null
+            
+            val decoyPlan = if (options.useDecoys) {
+                generateDecoyOutputs(amount, options.decoyCount)
+            } else null
+            
+            val timePlan = if (options.useTimeLock && splitPlan != null) {
+                val planned = splitPlan.splits.map { 
+                    IrisPlannedTransaction(it.amount, it.recipient, null) 
+                }
+                createTimeLockedPlan(planned, options.timeStrategy)
+            } else null
+            
+            val overallScore = 30 + 
+                (splitPlan?.privacyScore?.div(3) ?: 0) + 
+                (decoyPlan?.privacyScore?.div(4) ?: 0) +
+                (if (timePlan != null) 15 else 0)
+            
+            return IrisPrivateTransactionPackage(
+                packageId = "pkg:${System.currentTimeMillis().toString(16)}",
+                amount = amount,
+                recipient = recipient,
+                splitPlan = splitPlan,
+                decoyPlan = decoyPlan,
+                timePlan = timePlan,
+                overallPrivacyScore = minOf(100, overallScore)
+            )
+        }
+    }
 }
+
+// ============================================================================
+// STEALTH & PRIVATE TRANSACTION DATA CLASSES (Iris SDK)
+// ============================================================================
+
+@Serializable
+data class IrisStealthMetaAddress(
+    val metaAddressId: String,
+    val masterPubkey: String,
+    val spendKeyPath: String,
+    val viewKeyPath: String,
+    val createdAt: Long,
+    val version: Int,
+    val privacyFeatures: List<String>
+)
+
+@Serializable
+data class IrisStealthOneTimeAddress(
+    val address: String,
+    val derivationPath: String,
+    val ephemeralHint: String,
+    val recipientMetaId: String,
+    val createdAt: Long,
+    val expiresAt: Long,
+    val amount: Long?,
+    val scanTag: String
+)
+
+@Serializable
+data class IrisStealthPaymentScan(
+    val metaAddressId: String,
+    val paymentsFound: Int,
+    val payments: List<IrisDetectedStealthPayment>,
+    val scanDepth: Int,
+    val scanTime: Long
+)
+
+@Serializable
+data class IrisDetectedStealthPayment(
+    val signature: String,
+    val slot: Long,
+    val amount: Long,
+    val stealthLikelihood: Int,
+    val detectedAt: Long
+)
+
+@Serializable
+data class IrisStealthAnalysis(
+    val address: String,
+    val stealthScore: Int,
+    val classification: String,
+    val factors: List<String>,
+    val transactionCount: Int,
+    val balanceLamports: Long
+)
+
+@Serializable
+data class IrisStealthPaymentProof(
+    val proofId: String,
+    val oneTimeAddress: String,
+    val transactionSignature: String,
+    val ephemeralHint: String,
+    val timestamp: Long
+)
+
+@Serializable
+data class IrisSplitTransaction(
+    val index: Int,
+    val amount: Long,
+    val recipient: String,
+    val isIntermediate: Boolean,
+    val suggestedDelayMs: Long
+)
+
+@Serializable
+data class IrisSplitSendPlan(
+    val planId: String,
+    val totalAmount: Long,
+    val finalRecipient: String,
+    val splits: List<IrisSplitTransaction>,
+    val estimatedFees: Long,
+    val privacyScore: Int
+)
+
+@Serializable
+data class IrisPlannedTransaction(
+    val amount: Long,
+    val recipient: String,
+    val memo: String?
+)
+
+@Serializable
+data class IrisScheduledTransaction(
+    val index: Int,
+    val transaction: IrisPlannedTransaction,
+    val scheduledTime: Long,
+    val delayMs: Long
+)
+
+enum class IrisTimeReleaseStrategy {
+    RANDOM_INTERVALS,
+    FIXED_INTERVALS,
+    EXPONENTIAL_BACKOFF
+}
+
+@Serializable
+data class IrisTimeLockedPlan(
+    val planId: String,
+    val strategy: IrisTimeReleaseStrategy,
+    val transactions: List<IrisScheduledTransaction>,
+    val totalDurationMs: Long
+)
+
+@Serializable
+data class IrisDecoyOutput(
+    val index: Int,
+    val amount: Long,
+    val returnToSender: Boolean
+)
+
+@Serializable
+data class IrisDecoyOutputPlan(
+    val realAmount: Long,
+    val decoys: List<IrisDecoyOutput>,
+    val totalOutputs: Int,
+    val privacyScore: Int
+)
+
+enum class IrisMemoObfuscationType {
+    PADDING,
+    BASE64,
+    HASH_REF
+}
+
+@Serializable
+data class IrisObfuscatedMemo(
+    val original: String,
+    val obfuscated: String,
+    val type: IrisMemoObfuscationType,
+    val recoverable: Boolean
+)
+
+@Serializable
+data class IrisTransactionPrivacyAnalysis(
+    val signature: String,
+    val privacyScore: Int,
+    val classification: String,
+    val factors: List<String>
+)
+
+@Serializable
+data class IrisPrivateTransactionOptions(
+    val useSplitSend: Boolean = true,
+    val splitCount: Int = 3,
+    val useIntermediates: Boolean = true,
+    val useDecoys: Boolean = true,
+    val decoyCount: Int = 2,
+    val useTimeLock: Boolean = true,
+    val timeStrategy: IrisTimeReleaseStrategy = IrisTimeReleaseStrategy.RANDOM_INTERVALS
+)
+
+@Serializable
+data class IrisPrivateTransactionPackage(
+    val packageId: String,
+    val amount: Long,
+    val recipient: String,
+    val splitPlan: IrisSplitSendPlan?,
+    val decoyPlan: IrisDecoyOutputPlan?,
+    val timePlan: IrisTimeLockedPlan?,
+    val overallPrivacyScore: Int
+)

@@ -12,7 +12,7 @@
   
   ![License](https://img.shields.io/badge/license-MIT-blue)
   ![Kotlin](https://img.shields.io/badge/kotlin-2.3.0-purple)
-  ![Version](https://img.shields.io/badge/version-5.4.0-green)
+  ![Version](https://img.shields.io/badge/version-5.5.0-green)
 </div>
 
 ---
