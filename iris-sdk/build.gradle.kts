@@ -10,7 +10,7 @@ kotlin {
 }
 
 group = "xyz.selenus"
-version = "1.0.0"
+version = "1.2.0"
 
 // ============================================================================
 // Iris SDK 2026 Modern Dependencies

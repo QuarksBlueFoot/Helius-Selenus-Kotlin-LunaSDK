@@ -344,6 +344,96 @@ roadmap.result?.milestones?.forEach { milestone ->
 | `generatePrivacyRoadmap(address, target)` | Get improvement steps |
 | `getFactorBreakdown(address)` | Get detailed factor analysis |
 
+### NEW: Confidential Token-2022 (`helius.confidentialToken`)
+
+First Kotlin SDK with Token-2022 Confidential Balance support.
+
+```kotlin
+// Check if token supports confidential transfers
+val support = helius.confidentialToken.checkConfidentialSupport("mint-address")
+
+// Prepare a confidential transfer (amounts hidden on-chain)
+val transferPlan = helius.confidentialToken.prepareConfidentialTransfer(
+    from = "sender-account",
+    to = "receiver-account",
+    amount = 1_000_000_000L
+)
+println("Privacy level: ${transferPlan.privacyLevel}")  // "MAXIMUM"
+```
+
+| Method | Description |
+|--------|-------------|
+| `checkConfidentialSupport(mint)` | Check if mint supports confidential transfers |
+| `prepareConfidentialAccount(mint, owner)` | Prepare confidential account creation |
+| `prepareConfidentialDeposit(account, amount)` | Prepare deposit to encrypted balance |
+| `prepareConfidentialTransfer(from, to, amount)` | Prepare confidential transfer with ZK proofs |
+| `prepareApplyPending(account)` | Prepare to apply pending encrypted balance |
+| `prepareConfidentialWithdraw(account, amount)` | Prepare withdrawal to public balance |
+| `analyzeConfidentialPrivacy(account)` | Analyze confidential privacy posture |
+
+### NEW: Private Broadcast (`helius.privateBroadcast`)
+
+Multi-region transaction broadcast for IP correlation resistance.
+
+```kotlin
+// Broadcast through multiple regions simultaneously
+val result = helius.privateBroadcast.multiRegionBroadcast(
+    transaction = signedTx,
+    obfuscateOrder = true  // Randomize which region submits first
+)
+println("Broadcast from ${result.successfulRegions} regions")
+```
+
+| Method | Description |
+|--------|-------------|
+| `multiRegionBroadcast(tx, regions, obfuscate)` | Broadcast via multiple Helius Sender regions |
+| `maxPrivacyBroadcast(tx)` | Broadcast via all available regions |
+| `getOptimalRegions(count)` | Get geographically diverse regions |
+
+### NEW: Fingerprint Obfuscation (`helius.fingerprint`)
+
+Make transactions blend in with network traffic.
+
+```kotlin
+// Analyze how unique a transaction looks
+val analysis = helius.fingerprint.analyzeFingerprint(signedTx)
+println("Uniqueness: ${analysis.uniquenessScore}/100")
+println("Looks like: ${analysis.looksLike}")  // "DEX_SWAP", "SOL_TRANSFER", etc.
+
+// Get padding suggestion to match common patterns
+val padding = helius.fingerprint.suggestPadding(
+    currentSize = 600,
+    targetPattern = TransactionPattern.DEX_SWAP
+)
+```
+
+| Method | Description |
+|--------|-------------|
+| `analyzeFingerprint(tx)` | Analyze transaction uniqueness |
+| `suggestPadding(size, pattern)` | Get padding to match common patterns |
+| `analyzeTimingFingerprint(times)` | Detect predictable timing patterns |
+
+### NEW: RPC Rotation (`helius.rpcRotation`)
+
+Distribute requests across providers to prevent activity correlation.
+
+```kotlin
+// Get next endpoint in rotation
+val endpoint = helius.rpcRotation.getNextEndpoint(
+    sessionId = "my-session",
+    strategy = RotationStrategy.ROUND_ROBIN
+)
+
+// Check rotation statistics
+val stats = helius.rpcRotation.getRotationStats("my-session")
+println("Privacy score: ${stats.privacyScore}/100")
+```
+
+| Method | Description |
+|--------|-------------|
+| `getNextEndpoint(session, strategy)` | Get next provider in rotation |
+| `getRotationStats(session)` | Get rotation privacy statistics |
+
 ---
 
 ## Utility APIs

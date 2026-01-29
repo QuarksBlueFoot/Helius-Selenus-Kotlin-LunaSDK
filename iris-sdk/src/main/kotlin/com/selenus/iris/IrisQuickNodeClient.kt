@@ -975,6 +975,19 @@ class IrisQuickNodeClient(
     /** Advanced privacy innovations - World-first application-layer privacy */
     val privacyAdvanced: IrisPrivacyNamespace by lazy { IrisPrivacyNamespace(this) }
     
+    /** v1.2.0 - Phase 1 Privacy Innovations */
+    /** Confidential Token-2022 features (QuickNode-powered) */
+    val confidentialToken: IrisConfidentialTokenNamespace by lazy { IrisConfidentialTokenNamespace(this) }
+    
+    /** Multi-region broadcast for privacy */
+    val privateBroadcast: IrisPrivateBroadcastNamespace by lazy { IrisPrivateBroadcastNamespace(this) }
+    
+    /** Transaction fingerprint obfuscation */
+    val fingerprint: IrisFingerprintNamespace by lazy { IrisFingerprintNamespace(this) }
+    
+    /** RPC rotation for enhanced privacy */
+    val rpcRotation: IrisRpcRotationNamespace by lazy { IrisRpcRotationNamespace(this) }
+    
     // ========================================================================
     // INTERNAL HELPERS
     // ========================================================================
