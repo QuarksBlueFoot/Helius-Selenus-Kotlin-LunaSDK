@@ -12,7 +12,7 @@
   
   ![License](https://img.shields.io/badge/license-MIT-blue)
   ![Kotlin](https://img.shields.io/badge/kotlin-2.3.0-purple)
-  ![Version](https://img.shields.io/badge/version-5.3.0-green)
+  ![Version](https://img.shields.io/badge/version-5.4.0-green)
 </div>
 
 ---
@@ -433,6 +433,147 @@ println("Privacy score: ${stats.privacyScore}/100")
 |--------|-------------|
 | `getNextEndpoint(session, strategy)` | Get next provider in rotation |
 | `getRotationStats(session)` | Get rotation privacy statistics |
+
+### NEW: Privacy Combinator (`helius.privacyCombinator`)
+
+State-of-the-art privacy operations that combine multiple Helius APIs in innovative ways.
+
+#### Ghost Transactions
+
+Execute transactions that blend into network noise.
+
+```kotlin
+// Execute ghost transaction with temporal obfuscation
+val ghostResult = helius.privacyCombinator.executeGhostTransaction(
+    signedTransaction = signedTx,
+    ghostConfig = GhostConfig(
+        useTemporalObfuscation = true,
+        broadcastStrategy = GhostBroadcastStrategy.DUAL_REGION,
+        staggerBroadcasts = true,
+        minDelayMs = 100,
+        maxDelayMs = 2000
+    )
+)
+println("Ghost score: ${ghostResult.ghostScore}/100")
+println("Regions used: ${ghostResult.regionsUsed.size}")
+```
+
+#### Shadow Profile Analysis
+
+Analyze how visible/traceable a wallet is.
+
+```kotlin
+val profile = helius.privacyCombinator.analyzeShadowProfile("wallet-address")
+println("Shadow score: ${profile.shadowScore}/100")
+println("Level: ${profile.shadowLevel}")  // GHOST, SHADOW, VISIBLE, EXPOSED, TRANSPARENT
+profile.factors.forEach { println("${it.type}: ${it.description}") }
+profile.recommendations.forEach { println("Recommendation: $it") }
+```
+
+#### Privacy-Optimized Swaps
+
+Jupiter swaps with ghost transaction execution.
+
+```kotlin
+val swap = helius.privacyCombinator.executePrivacySwap(
+    inputMint = SOL_MINT,
+    outputMint = USDC_MINT,
+    amount = 1_000_000_000L,  // 1 SOL
+    userPublicKey = wallet,
+    signCallback = { tx -> signTransaction(tx) },
+    privacyConfig = PrivacySwapConfig(
+        preSwapDelayMs = 500,
+        useTemporalObfuscation = true,
+        broadcastStrategy = GhostBroadcastStrategy.DUAL_REGION
+    )
+)
+println("Swap signature: ${swap.signature}")
+println("Privacy score: ${swap.privacyScore}/100")
+```
+
+#### Surveillance Detection
+
+Detect if a wallet is being monitored.
+
+```kotlin
+val surveillance = helius.privacyCombinator.detectSurveillance("wallet-address")
+println("Threat score: ${surveillance.threatScore}/100")
+println("Level: ${surveillance.level}")  // NONE, LOW, MEDIUM, HIGH, CRITICAL
+surveillance.threats.forEach { threat ->
+    println("${threat.severity}: ${threat.type} - ${threat.description}")
+}
+```
+
+#### Decoy Generation
+
+Generate realistic decoy activity to confuse analysis.
+
+```kotlin
+val decoyPlan = helius.privacyCombinator.generateDecoyPlan(
+    walletAddress = "wallet",
+    decoyConfig = DecoyConfig(
+        decoyCount = 10,
+        patterns = listOf(DecoyPattern.SOL_MICRO_TRANSFER, DecoyPattern.SWAP_DUST)
+    )
+)
+println("Generated ${decoyPlan.decoyCount} decoys")
+println("Noise score: ${decoyPlan.noiseScore}/100")
+```
+
+#### Stealth Asset Queries
+
+Query assets without revealing query patterns.
+
+```kotlin
+val assets = helius.privacyCombinator.stealthAssetQuery(
+    targetAddress = "wallet",
+    stealthConfig = StealthQueryConfig(
+        useDecoyQueries = true,
+        decoyCount = 5,
+        useTemporalSpread = true
+    )
+)
+println("Stealth score: ${assets.stealthScore}/100")
+println("Query position: ${assets.queryPosition}/${assets.totalQueries}")
+```
+
+#### Transaction History Leak Analysis
+
+Find privacy leaks in transaction history.
+
+```kotlin
+val leaks = helius.privacyCombinator.analyzeHistoryLeaks("wallet", depth = 50)
+println("Overall risk: ${leaks.overallRisk}")
+println("Linked addresses: ${leaks.linkedAddressCount}")
+leaks.leaks.forEach { leak ->
+    println("${leak.severity}: ${leak.type} - ${leak.mitigation}")
+}
+```
+
+#### Stealth Balance Aggregation
+
+Aggregate balances across multiple wallets privately.
+
+```kotlin
+val aggregation = helius.privacyCombinator.stealthAggregateBalances(
+    wallets = listOf("wallet1", "wallet2", "wallet3"),
+    includeTokens = true
+)
+println("Total: ${aggregation.totalSol} SOL")
+println("Decoys used: ${aggregation.decoysUsed}")
+println("Stealth score: ${aggregation.stealthScore}/100")
+```
+
+| Method | Description |
+|--------|-------------|
+| `executeGhostTransaction(tx, config)` | Transaction with temporal + geographic obfuscation |
+| `analyzeShadowProfile(address)` | Analyze wallet visibility/traceability |
+| `executePrivacySwap(input, output, ...)` | Jupiter swap via ghost transaction |
+| `detectSurveillance(address)` | Detect tracking/monitoring |
+| `generateDecoyPlan(address, config)` | Generate decoy transaction plan |
+| `stealthAssetQuery(address, config)` | Query assets without fingerprinting |
+| `analyzeHistoryLeaks(address, depth)` | Find privacy leaks in history |
+| `stealthAggregateBalances(wallets)` | Aggregate balances privately |
 
 ---
 

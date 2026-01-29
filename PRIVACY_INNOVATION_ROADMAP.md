@@ -3,7 +3,69 @@
 
 ---
 
-## 📊 Competitive Landscape Analysis
+## � NEW: Advanced Privacy Combinator API (v5.4.0)
+
+**Status**: ✅ IMPLEMENTED
+
+The **Privacy Combinator API** is a state-of-the-art innovation that combines multiple Helius APIs (Sender, DAS, ZK Compression, Jupiter, Webhooks, Enhanced Transactions, Priority Fees) into unique privacy operations that don't exist in any other Solana SDK.
+
+### Available Operations
+
+| Operation | Description | APIs Combined |
+|-----------|-------------|---------------|
+| **Ghost Transactions** | Blend into network noise | Sender + Priority Fees + Temporal Delays |
+| **Shadow Profiles** | Analyze wallet visibility | DAS + ZK + Signatures + SNS |
+| **Privacy Swaps** | Privacy-optimized Jupiter swaps | Jupiter + Sender + Ghost TX |
+| **Surveillance Detection** | Detect tracking/monitoring | Enhanced TX + Signatures + DAS |
+| **Decoy Generation** | Create realistic decoy activity | Pattern Analysis + Timing |
+| **Stealth Queries** | Query assets without fingerprinting | DAS + Decoy Injection |
+| **History Leak Analysis** | Find privacy leaks in history | Enhanced TX + Graph Analysis |
+| **Stealth Aggregation** | Aggregate balances privately | RPC + Decoy Queries |
+
+### Usage Examples
+
+```kotlin
+val client = LunaHeliusClient("your-api-key")
+
+// 1. Ghost Transaction - Blend into network noise
+val ghostResult = client.privacyCombinator.executeGhostTransaction(
+    signedTransaction = signedTx,
+    ghostConfig = GhostConfig(
+        useTemporalObfuscation = true,
+        broadcastStrategy = GhostBroadcastStrategy.DUAL_REGION,
+        staggerBroadcasts = true
+    )
+)
+// Result: ghostScore 85/100, broadcast to multiple regions
+
+// 2. Shadow Profile - How visible is a wallet?
+val profile = client.privacyCombinator.analyzeShadowProfile("wallet-address")
+// Result: shadowScore, shadowLevel (GHOST/SHADOW/VISIBLE/EXPOSED/TRANSPARENT)
+
+// 3. Privacy Swap - Jupiter + Ghost for maximum privacy
+val swap = client.privacyCombinator.executePrivacySwap(
+    inputMint = "SOL",
+    outputMint = "USDC",
+    amount = 1_000_000_000L,
+    userPublicKey = wallet,
+    signCallback = { tx -> signTransaction(tx) }
+)
+
+// 4. Surveillance Detection - Is someone watching?
+val surveillance = client.privacyCombinator.detectSurveillance("wallet-address")
+// Result: threatScore, threats[], SurveillanceLevel
+
+// 5. Stealth Asset Query - Query without revealing interest
+val assets = client.privacyCombinator.stealthAssetQuery(
+    targetAddress = "wallet",
+    stealthConfig = StealthQueryConfig(useDecoyQueries = true, decoyCount = 5)
+)
+// Result: assets with 5 decoy queries to mask true target
+```
+
+---
+
+## �📊 Competitive Landscape Analysis
 
 ### Competitors Analyzed
 

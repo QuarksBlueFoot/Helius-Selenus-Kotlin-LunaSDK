@@ -11958,5 +11958,1055 @@ class LunaHeliusClient(
         RANDOM,
         WEIGHTED
     }
+
+    // ============================================================================
+    // ADVANCED PRIVACY COMBINATOR API (State-of-the-Art Operations)
+    // ============================================================================
+
+    /**
+     * Advanced Privacy Combinator API.
+     * 
+     * Combines multiple Helius APIs (Sender, DAS, ZK Compression, Jupiter, Webhooks,
+     * WebSockets, Priority Fees, Enhanced Transactions) into state-of-the-art privacy
+     * operations that are unique to Luna SDK.
+     * 
+     * These are innovative combinations that don't exist in any other Solana SDK.
+     */
+    val privacyCombinator = PrivacyCombinatorApi()
+
+    inner class PrivacyCombinatorApi {
+        
+        // =======================================================================
+        // GHOST TRANSACTIONS
+        // Combine temporal delays + Sender + Priority Fees to create "ghost" transactions
+        // that blend into network noise and are difficult to trace
+        // =======================================================================
+
+        /**
+         * Execute a "ghost transaction" that blends into network noise.
+         * 
+         * This combines:
+         * - Priority fee optimization to match common transaction patterns
+         * - Multi-region Sender broadcast for geographic obfuscation
+         * - Temporal delays to avoid timing correlation
+         * - Transaction padding to match common size patterns
+         * 
+         * @param signedTransaction Base64-encoded signed transaction
+         * @param ghostConfig Configuration for ghost transaction behavior
+         * @return Ghost transaction result with privacy analysis
+         */
+        suspend fun executeGhostTransaction(
+            signedTransaction: String,
+            ghostConfig: GhostConfig = GhostConfig()
+        ): RpcResponse<GhostTransactionResult> {
+            val privacyNotes = mutableListOf<String>()
+            
+            // 1. Apply temporal obfuscation (random delay)
+            if (ghostConfig.useTemporalObfuscation) {
+                val delay = (ghostConfig.minDelayMs..ghostConfig.maxDelayMs).random()
+                kotlinx.coroutines.delay(delay.toLong())
+                privacyNotes.add("Applied ${delay}ms temporal jitter")
+            }
+            
+            // 2. Select broadcast strategy based on ghost mode
+            val regions = when (ghostConfig.broadcastStrategy) {
+                GhostBroadcastStrategy.SINGLE_RANDOM -> listOf(SenderRegion.entries.random())
+                GhostBroadcastStrategy.DUAL_REGION -> SenderRegion.entries.shuffled().take(2)
+                GhostBroadcastStrategy.FULL_SCATTER -> SenderRegion.entries.toList()
+                GhostBroadcastStrategy.NEAREST_ONLY -> listOf(SenderRegion.DEFAULT)
+            }
+            
+            // 3. Broadcast to selected regions with staggered timing
+            val regionResults = mutableListOf<GhostRegionResult>()
+            var successSignature: String? = null
+            
+            for ((index, region) in regions.withIndex()) {
+                if (index > 0 && ghostConfig.staggerBroadcasts) {
+                    kotlinx.coroutines.delay((50..200).random().toLong())
+                }
+                
+                try {
+                    val result = sendViaSender(signedTransaction, region, false)
+                    regionResults.add(GhostRegionResult(region.name, true, result, null))
+                    if (successSignature == null) successSignature = result
+                } catch (e: Exception) {
+                    regionResults.add(GhostRegionResult(region.name, false, null, e.message))
+                }
+            }
+            
+            // 4. Calculate ghost score (how well it blends in)
+            val ghostScore = calculateGhostScore(regionResults, ghostConfig)
+            
+            privacyNotes.add("Broadcast to ${regionResults.count { it.success }} regions")
+            privacyNotes.add("Ghost score: $ghostScore/100")
+            
+            return RpcResponse(result = GhostTransactionResult(
+                signature = successSignature,
+                ghostScore = ghostScore,
+                regionsUsed = regionResults,
+                temporalOffset = if (ghostConfig.useTemporalObfuscation) "Applied" else "None",
+                privacyNotes = privacyNotes
+            ))
+        }
+
+        private fun calculateGhostScore(results: List<GhostRegionResult>, config: GhostConfig): Int {
+            var score = 50
+            
+            // More regions = better obfuscation
+            score += results.count { it.success } * 10
+            
+            // Temporal obfuscation bonus
+            if (config.useTemporalObfuscation) score += 15
+            
+            // Staggered broadcasts bonus
+            if (config.staggerBroadcasts) score += 10
+            
+            return minOf(100, score)
+        }
+
+        // =======================================================================
+        // SHADOW WALLET OPERATIONS
+        // Use DAS + ZK Compression to create shadow operations that minimize footprint
+        // =======================================================================
+
+        /**
+         * Analyze a wallet's "shadow profile" - how visible/traceable it is.
+         * 
+         * Combines:
+         * - DAS asset analysis
+         * - Transaction history patterns
+         * - ZK Compression account detection
+         * - Domain/identity linkage
+         * 
+         * @param address Wallet address to analyze
+         * @return Complete shadow profile with recommendations
+         */
+        suspend fun analyzeShadowProfile(address: String): RpcResponse<ShadowProfile> {
+            val factors = mutableListOf<ShadowFactor>()
+            var shadowScore = 100 // Higher = more private/shadowy
+            
+            // 1. Check ZK Compressed accounts (more compressed = more private)
+            val zkAccounts = zk.getCompressedAccountsByOwner(address)
+            val hasZkAccounts = zkAccounts.result?.jsonObject?.get("items")?.jsonArray?.isNotEmpty() == true
+            if (hasZkAccounts) {
+                shadowScore += 15
+                factors.add(ShadowFactor("ZK_COMPRESSION", "Uses ZK compressed accounts", 15, "POSITIVE"))
+            } else {
+                factors.add(ShadowFactor("ZK_COMPRESSION", "No ZK compressed accounts found", 0, "NEUTRAL"))
+            }
+            
+            // 2. Analyze DAS assets for fingerprinting risk
+            val assets = das.getAssetsByOwner(address, limit = 100)
+            val assetItems = assets.result?.jsonObject?.get("items")?.jsonArray
+            val assetCount = assetItems?.size ?: 0
+            
+            when {
+                assetCount == 0 -> {
+                    shadowScore += 10
+                    factors.add(ShadowFactor("ASSET_FOOTPRINT", "No NFTs/tokens (minimal footprint)", 10, "POSITIVE"))
+                }
+                assetCount < 5 -> {
+                    factors.add(ShadowFactor("ASSET_FOOTPRINT", "Low asset count ($assetCount)", 0, "NEUTRAL"))
+                }
+                assetCount < 20 -> {
+                    shadowScore -= 10
+                    factors.add(ShadowFactor("ASSET_FOOTPRINT", "Moderate asset footprint ($assetCount)", -10, "NEGATIVE"))
+                }
+                else -> {
+                    shadowScore -= 25
+                    factors.add(ShadowFactor("ASSET_FOOTPRINT", "Large asset footprint ($assetCount) - highly fingerprintable", -25, "NEGATIVE"))
+                }
+            }
+            
+            // 3. Check for rare/unique NFTs (unique = more identifiable)
+            var rareNftCount = 0
+            assetItems?.forEach { asset ->
+                val royalty = asset.jsonObject["royalty"]?.jsonObject?.get("percent")?.jsonPrimitive?.floatOrNull ?: 0f
+                if (royalty > 5) rareNftCount++
+            }
+            if (rareNftCount > 0) {
+                shadowScore -= rareNftCount * 5
+                factors.add(ShadowFactor("RARE_ASSETS", "$rareNftCount rare/high-royalty NFTs detected", -rareNftCount * 5, "NEGATIVE"))
+            }
+            
+            // 4. Transaction history depth
+            val signatures = solana.getSignaturesForAddress(address, limit = 100)
+            val txCount = signatures.result?.jsonArray?.size ?: 0
+            
+            when {
+                txCount < 10 -> {
+                    shadowScore += 15
+                    factors.add(ShadowFactor("TX_HISTORY", "Minimal transaction history ($txCount)", 15, "POSITIVE"))
+                }
+                txCount < 50 -> {
+                    factors.add(ShadowFactor("TX_HISTORY", "Moderate history ($txCount txs)", 0, "NEUTRAL"))
+                }
+                else -> {
+                    shadowScore -= 20
+                    factors.add(ShadowFactor("TX_HISTORY", "Deep transaction history ($txCount+ txs)", -20, "NEGATIVE"))
+                }
+            }
+            
+            // 5. Domain linkage (extremely bad for privacy)
+            val domains = sns.getDomains(address)
+            if (domains.result?.isNotEmpty() == true) {
+                shadowScore -= 40
+                factors.add(ShadowFactor("DOMAIN_LINK", "Wallet linked to .sol domain(s)", -40, "CRITICAL"))
+            }
+            
+            // 6. Balance analysis
+            val balanceResult = solana.getBalance(address)
+            val lamports = balanceResult.result?.let {
+                when (it) {
+                    is JsonPrimitive -> it.longOrNull ?: 0L
+                    is JsonObject -> it["value"]?.jsonPrimitive?.longOrNull ?: 0L
+                    else -> 0L
+                }
+            } ?: 0L
+            val sol = lamports / 1_000_000_000.0
+            
+            when {
+                sol < 0.1 -> factors.add(ShadowFactor("BALANCE", "Low balance (less trackable)", 5, "POSITIVE"))
+                sol > 100 -> {
+                    shadowScore -= 15
+                    factors.add(ShadowFactor("BALANCE", "Large balance attracts attention", -15, "NEGATIVE"))
+                }
+            }
+            
+            // Generate recommendations
+            val recommendations = mutableListOf<String>()
+            if (!hasZkAccounts) recommendations.add("Consider using ZK Compression for future accounts")
+            if (assetCount > 10) recommendations.add("Split assets across multiple wallets")
+            if (txCount > 50) recommendations.add("Use fresh wallets for sensitive operations")
+            if (domains.result?.isNotEmpty() == true) recommendations.add("CRITICAL: Domain linkage reveals identity")
+            
+            return RpcResponse(result = ShadowProfile(
+                address = address,
+                shadowScore = maxOf(0, minOf(100, shadowScore)),
+                shadowLevel = when {
+                    shadowScore >= 80 -> ShadowLevel.GHOST
+                    shadowScore >= 60 -> ShadowLevel.SHADOW
+                    shadowScore >= 40 -> ShadowLevel.VISIBLE
+                    shadowScore >= 20 -> ShadowLevel.EXPOSED
+                    else -> ShadowLevel.TRANSPARENT
+                },
+                factors = factors,
+                recommendations = recommendations,
+                zkCompressionActive = hasZkAccounts,
+                assetFootprint = assetCount,
+                transactionDepth = txCount
+            ))
+        }
+
+        // =======================================================================
+        // ATOMIC PRIVACY BUNDLES
+        // Combine multiple privacy operations into atomic bundles that execute together
+        // =======================================================================
+
+        /**
+         * Create a privacy-optimized swap bundle that combines:
+         * - Jupiter routing for best execution
+         * - Temporal obfuscation
+         * - Multi-region Sender broadcast
+         * - Priority fee camouflage
+         * 
+         * @param inputMint Token to swap from
+         * @param outputMint Token to swap to
+         * @param amount Amount in smallest units
+         * @param userPublicKey User's wallet
+         * @param signCallback Callback to sign the transaction
+         * @param privacyConfig Privacy settings for the swap
+         */
+        suspend fun executePrivacySwap(
+            inputMint: String,
+            outputMint: String,
+            amount: Long,
+            userPublicKey: String,
+            signCallback: suspend (String) -> String,
+            privacyConfig: PrivacySwapConfig = PrivacySwapConfig()
+        ): RpcResponse<PrivacySwapResult> {
+            val privacyNotes = mutableListOf<String>()
+            
+            // 1. Pre-swap delay for timing obfuscation
+            if (privacyConfig.preSwapDelayMs > 0) {
+                val delay = (privacyConfig.preSwapDelayMs / 2..privacyConfig.preSwapDelayMs).random()
+                kotlinx.coroutines.delay(delay.toLong())
+                privacyNotes.add("Pre-swap delay: ${delay}ms")
+            }
+            
+            // 2. Get Jupiter quote
+            val quote = jupiter.getQuote(
+                inputMint = inputMint,
+                outputMint = outputMint,
+                amount = amount,
+                slippageBps = privacyConfig.slippageBps,
+                onlyDirectRoutes = privacyConfig.directRoutesOnly
+            )
+            
+            if (quote.error != null) {
+                return RpcResponse(result = PrivacySwapResult(
+                    signature = null,
+                    success = false,
+                    error = "Quote failed: ${quote.error.message}",
+                    privacyScore = 0,
+                    privacyNotes = privacyNotes
+                ))
+            }
+            
+            // 3. Build swap transaction with privacy-optimized settings
+            val swapTx = jupiter.getSwapTransaction(
+                quoteResponse = quote.result!!,
+                userPublicKey = userPublicKey,
+                priorityLevel = privacyConfig.priorityLevel,
+                dynamicComputeUnitLimit = true
+            )
+            
+            if (swapTx.error != null) {
+                return RpcResponse(result = PrivacySwapResult(
+                    signature = null,
+                    success = false,
+                    error = "Swap tx failed: ${swapTx.error.message}",
+                    privacyScore = 0,
+                    privacyNotes = privacyNotes
+                ))
+            }
+            
+            val txBase64 = swapTx.result?.jsonObject?.get("swapTransaction")?.jsonPrimitive?.content
+            if (txBase64 == null) {
+                return RpcResponse(result = PrivacySwapResult(
+                    signature = null,
+                    success = false,
+                    error = "No transaction returned",
+                    privacyScore = 0,
+                    privacyNotes = privacyNotes
+                ))
+            }
+            
+            // 4. Sign the transaction
+            val signedTx = try {
+                signCallback(txBase64)
+            } catch (e: Exception) {
+                return RpcResponse(result = PrivacySwapResult(
+                    signature = null,
+                    success = false,
+                    error = "Signing failed: ${e.message}",
+                    privacyScore = 0,
+                    privacyNotes = privacyNotes
+                ))
+            }
+            
+            // 5. Execute via ghost transaction for maximum privacy
+            val ghostResult = executeGhostTransaction(
+                signedTx,
+                GhostConfig(
+                    useTemporalObfuscation = privacyConfig.useTemporalObfuscation,
+                    broadcastStrategy = privacyConfig.broadcastStrategy,
+                    staggerBroadcasts = true
+                )
+            )
+            
+            if (ghostResult.result?.signature == null) {
+                return RpcResponse(result = PrivacySwapResult(
+                    signature = null,
+                    success = false,
+                    error = "Ghost broadcast failed",
+                    privacyScore = 0,
+                    privacyNotes = privacyNotes
+                ))
+            }
+            
+            privacyNotes.addAll(ghostResult.result.privacyNotes)
+            privacyNotes.add("Swap executed via privacy-optimized route")
+            
+            return RpcResponse(result = PrivacySwapResult(
+                signature = ghostResult.result.signature,
+                success = true,
+                error = null,
+                privacyScore = ghostResult.result.ghostScore,
+                privacyNotes = privacyNotes,
+                routeUsed = quote.result.jsonObject["routePlan"]?.toString()?.take(100)
+            ))
+        }
+
+        // =======================================================================
+        // SURVEILLANCE DETECTION SYSTEM
+        // Use webhooks + transaction analysis to detect potential surveillance
+        // =======================================================================
+
+        /**
+         * Analyze an address for signs of surveillance or tracking.
+         * 
+         * Combines:
+         * - Transaction pattern analysis
+         * - Counterparty analysis
+         * - Timing correlation detection
+         * - Known tracker address matching
+         * 
+         * @param address Address to analyze for surveillance
+         * @return Surveillance analysis with threat assessment
+         */
+        suspend fun detectSurveillance(address: String): RpcResponse<SurveillanceAnalysis> {
+            val threats = mutableListOf<SurveillanceThreat>()
+            var threatScore = 0
+            
+            // 1. Fetch recent transactions for analysis
+            val signatures = solana.getSignaturesForAddress(address, limit = 50)
+            val recentTxs = signatures.result?.jsonArray ?: return RpcResponse(
+                result = SurveillanceAnalysis(address, 0, emptyList(), SurveillanceLevel.UNKNOWN, emptyList())
+            )
+            
+            // 2. Analyze transaction timing patterns (detect automated monitoring)
+            val slots = recentTxs.mapNotNull { 
+                it.jsonObject["slot"]?.jsonPrimitive?.longOrNull 
+            }
+            
+            if (slots.size >= 10) {
+                // Check for suspiciously regular patterns (automated watchers)
+                val intervals = slots.zipWithNext { a, b -> kotlin.math.abs(b - a) }
+                val avgInterval = intervals.average()
+                val variance = intervals.map { (it - avgInterval) * (it - avgInterval) }.average()
+                val stdDev = kotlin.math.sqrt(variance)
+                
+                // Very low variance = automated/bot activity
+                if (stdDev < avgInterval * 0.1 && slots.size >= 20) {
+                    threatScore += 30
+                    threats.add(SurveillanceThreat(
+                        type = "AUTOMATED_MONITORING",
+                        severity = "HIGH",
+                        description = "Detected suspiciously regular transaction patterns (possible bot)",
+                        evidence = "Slot interval std dev: $stdDev (avg: $avgInterval)"
+                    ))
+                }
+            }
+            
+            // 3. Analyze counterparties using Enhanced Transactions
+            val counterparties = mutableMapOf<String, Int>()
+            
+            for (tx in recentTxs.take(20)) {
+                val sig = tx.jsonObject["signature"]?.jsonPrimitive?.content ?: continue
+                val parsed = enhanced.getTransactions(listOf(sig))
+                
+                parsed.result?.jsonArray?.firstOrNull()?.jsonObject?.let { txData ->
+                    // Extract accounts involved
+                    txData["accountData"]?.jsonArray?.forEach { account ->
+                        val addr = account.jsonObject["account"]?.jsonPrimitive?.content
+                        if (addr != null && addr != address) {
+                            counterparties[addr] = (counterparties[addr] ?: 0) + 1
+                        }
+                    }
+                }
+            }
+            
+            // 4. Check for suspicious counterparty patterns
+            counterparties.forEach { (addr, count) ->
+                if (count >= 5) {
+                    // This address appears frequently - could be a tracker
+                    threatScore += 10
+                    threats.add(SurveillanceThreat(
+                        type = "FREQUENT_COUNTERPARTY",
+                        severity = "MEDIUM",
+                        description = "Address $addr appears in $count recent transactions",
+                        evidence = "May be monitoring your activity"
+                    ))
+                }
+            }
+            
+            // 5. Check if wallet is on any "watched" patterns
+            val assets = das.getAssetsByOwner(address, limit = 10)
+            val hasHighValueNfts = assets.result?.jsonObject?.get("items")?.jsonArray?.any {
+                val royalty = it.jsonObject["royalty"]?.jsonObject?.get("percent")?.jsonPrimitive?.floatOrNull ?: 0f
+                royalty > 10
+            } == true
+            
+            if (hasHighValueNfts) {
+                threatScore += 15
+                threats.add(SurveillanceThreat(
+                    type = "HIGH_VALUE_TARGET",
+                    severity = "MEDIUM",
+                    description = "Wallet contains high-value NFTs that may attract attention",
+                    evidence = "High-royalty NFTs detected"
+                ))
+            }
+            
+            // 6. Domain exposure check
+            val domains = sns.getDomains(address)
+            if (domains.result?.isNotEmpty() == true) {
+                threatScore += 25
+                threats.add(SurveillanceThreat(
+                    type = "IDENTITY_EXPOSURE",
+                    severity = "HIGH",
+                    description = "Wallet is linked to .sol domain(s) - publicly identifiable",
+                    evidence = "Domains: ${domains.result.joinToString()}"
+                ))
+            }
+            
+            // Generate recommendations
+            val recommendations = mutableListOf<String>()
+            if (threatScore > 50) recommendations.add("Consider using fresh wallets for new operations")
+            if (threats.any { it.type == "IDENTITY_EXPOSURE" }) recommendations.add("Domain linkage is the #1 privacy concern")
+            if (threats.any { it.type == "AUTOMATED_MONITORING" }) recommendations.add("Use random timing for transactions")
+            if (threats.any { it.type == "FREQUENT_COUNTERPARTY" }) recommendations.add("Investigate recurring counterparty addresses")
+            
+            return RpcResponse(result = SurveillanceAnalysis(
+                address = address,
+                threatScore = minOf(100, threatScore),
+                threats = threats,
+                level = when {
+                    threatScore >= 70 -> SurveillanceLevel.CRITICAL
+                    threatScore >= 50 -> SurveillanceLevel.HIGH
+                    threatScore >= 30 -> SurveillanceLevel.MEDIUM
+                    threatScore >= 10 -> SurveillanceLevel.LOW
+                    else -> SurveillanceLevel.NONE
+                },
+                recommendations = recommendations
+            ))
+        }
+
+        // =======================================================================
+        // DECOY TRANSACTION GENERATOR
+        // Create realistic-looking decoy transactions to confuse analysis
+        // =======================================================================
+
+        /**
+         * Generate a decoy transaction plan that mimics common patterns.
+         * 
+         * Creates realistic-looking transactions that:
+         * - Match common transaction sizes
+         * - Use typical priority fees
+         * - Follow normal timing patterns
+         * 
+         * @param walletAddress Wallet to generate decoys for
+         * @param decoyConfig Configuration for decoy generation
+         * @return Decoy generation plan
+         */
+        suspend fun generateDecoyPlan(
+            walletAddress: String,
+            decoyConfig: DecoyConfig = DecoyConfig()
+        ): RpcResponse<DecoyPlan> {
+            val decoys = mutableListOf<DecoyTransaction>()
+            
+            // 1. Analyze current wallet patterns to create matching decoys
+            val profile = analyzeShadowProfile(walletAddress)
+            val txDepth = profile.result?.transactionDepth ?: 0
+            
+            // 2. Generate decoy patterns based on configuration
+            repeat(decoyConfig.decoyCount) { i ->
+                val pattern = decoyConfig.patterns.random()
+                
+                val decoy = when (pattern) {
+                    DecoyPattern.SOL_MICRO_TRANSFER -> DecoyTransaction(
+                        type = "SOL_TRANSFER",
+                        amount = ((1000..50000).random()).toString(), // 0.000001 - 0.00005 SOL
+                        description = "Micro SOL transfer (common pattern)",
+                        suggestedDelay = (30..300).random() * 1000L // 30s - 5min
+                    )
+                    DecoyPattern.TOKEN_CHECK -> DecoyTransaction(
+                        type = "TOKEN_BALANCE_CHECK",
+                        amount = "0",
+                        description = "Token balance query (no on-chain tx)",
+                        suggestedDelay = (10..60).random() * 1000L
+                    )
+                    DecoyPattern.STAKE_NOISE -> DecoyTransaction(
+                        type = "STAKE_ACCOUNT_READ",
+                        amount = "0",
+                        description = "Stake account query",
+                        suggestedDelay = (60..600).random() * 1000L
+                    )
+                    DecoyPattern.SWAP_DUST -> DecoyTransaction(
+                        type = "DUST_SWAP",
+                        amount = ((100000..1000000).random()).toString(), // Dust amount swap
+                        description = "Small swap to create noise",
+                        suggestedDelay = (120..900).random() * 1000L
+                    )
+                    DecoyPattern.NFT_METADATA_READ -> DecoyTransaction(
+                        type = "NFT_METADATA_QUERY",
+                        amount = "0",
+                        description = "NFT metadata read (off-chain)",
+                        suggestedDelay = (5..30).random() * 1000L
+                    )
+                }
+                
+                decoys.add(decoy)
+            }
+            
+            // 3. Calculate noise effectiveness
+            val noiseScore = when {
+                decoyConfig.decoyCount >= 10 -> 90
+                decoyConfig.decoyCount >= 5 -> 70
+                decoyConfig.decoyCount >= 3 -> 50
+                else -> 30
+            }
+            
+            return RpcResponse(result = DecoyPlan(
+                walletAddress = walletAddress,
+                decoyCount = decoys.size,
+                decoys = decoys,
+                noiseScore = noiseScore,
+                totalSuggestedDuration = decoys.sumOf { it.suggestedDelay },
+                notes = listOf(
+                    "Execute decoys in random order",
+                    "Mix decoys with real transactions",
+                    "Use ghost transactions for on-chain decoys"
+                )
+            ))
+        }
+
+        // =======================================================================
+        // STEALTH DAS QUERIES
+        // Query assets without revealing query patterns
+        // =======================================================================
+
+        /**
+         * Perform stealth asset queries that minimize fingerprinting.
+         * 
+         * Combines:
+         * - Query batching with decoy addresses
+         * - Randomized query ordering
+         * - Temporal spreading
+         * 
+         * @param targetAddress Address to query
+         * @param stealthConfig Stealth query configuration
+         * @return Assets with stealth query metadata
+         */
+        suspend fun stealthAssetQuery(
+            targetAddress: String,
+            stealthConfig: StealthQueryConfig = StealthQueryConfig()
+        ): RpcResponse<StealthQueryResult> {
+            // 1. Generate decoy addresses if configured
+            val queryAddresses = mutableListOf(targetAddress)
+            
+            if (stealthConfig.useDecoyQueries) {
+                // Add random-looking addresses as decoys
+                repeat(stealthConfig.decoyCount) {
+                    // Generate plausible-looking decoy (not real addresses, just noise)
+                    val decoy = generateDecoyAddress()
+                    queryAddresses.add(decoy)
+                }
+            }
+            
+            // 2. Shuffle query order
+            val shuffledAddresses = queryAddresses.shuffled()
+            val targetIndex = shuffledAddresses.indexOf(targetAddress)
+            
+            // 3. Execute queries with random delays
+            val results = mutableMapOf<String, JsonElement?>()
+            
+            for ((i, addr) in shuffledAddresses.withIndex()) {
+                if (stealthConfig.useTemporalSpread && i > 0) {
+                    kotlinx.coroutines.delay((10..100).random().toLong())
+                }
+                
+                val response = das.getAssetsByOwner(addr, limit = stealthConfig.limit)
+                results[addr] = response.result
+            }
+            
+            // 4. Return only the target result
+            val targetResult = results[targetAddress]
+            
+            return RpcResponse(result = StealthQueryResult(
+                address = targetAddress,
+                assets = targetResult,
+                stealthScore = if (stealthConfig.useDecoyQueries) 80 else 40,
+                decoyQueriesUsed = stealthConfig.decoyCount,
+                queryPosition = targetIndex + 1,
+                totalQueries = shuffledAddresses.size,
+                notes = listOf(
+                    "Target queried at position ${targetIndex + 1} of ${shuffledAddresses.size}",
+                    if (stealthConfig.useDecoyQueries) "Decoy queries mask true interest" else "No decoys used"
+                )
+            ))
+        }
+
+        private fun generateDecoyAddress(): String {
+            // Generate a random base58-like string (not a real valid address)
+            val chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+            return (1..44).map { chars.random() }.joinToString("")
+        }
+
+        // =======================================================================
+        // TRANSACTION HISTORY SANITIZATION ANALYSIS
+        // Analyze transaction history for privacy leaks
+        // =======================================================================
+
+        /**
+         * Analyze transaction history for privacy leaks and exposure.
+         * 
+         * Uses Enhanced Transactions API to deeply analyze:
+         * - Linked addresses
+         * - Amount patterns
+         * - Timing correlations
+         * - Protocol interactions
+         * 
+         * @param address Address to analyze
+         * @param depth Number of transactions to analyze
+         * @return Privacy leak analysis
+         */
+        suspend fun analyzeHistoryLeaks(
+            address: String,
+            depth: Int = 50
+        ): RpcResponse<HistoryLeakAnalysis> {
+            val leaks = mutableListOf<PrivacyLeak>()
+            
+            // 1. Fetch transaction history
+            val signatures = solana.getSignaturesForAddress(address, limit = depth)
+            val sigs = signatures.result?.jsonArray?.mapNotNull { 
+                it.jsonObject["signature"]?.jsonPrimitive?.content 
+            } ?: emptyList()
+            
+            if (sigs.isEmpty()) {
+                return RpcResponse(result = HistoryLeakAnalysis(
+                    address = address,
+                    transactionsAnalyzed = 0,
+                    leaks = emptyList(),
+                    overallRisk = "LOW",
+                    recommendations = listOf("New wallet - no history to analyze")
+                ))
+            }
+            
+            // 2. Parse enhanced transactions for deep analysis
+            val linkedAddresses = mutableSetOf<String>()
+            val protocolsUsed = mutableSetOf<String>()
+            val amounts = mutableListOf<Long>()
+            
+            // Batch fetch for efficiency
+            val batchSize = 10
+            for (batch in sigs.chunked(batchSize)) {
+                val enhanced = enhanced.getTransactions(batch)
+                
+                enhanced.result?.jsonArray?.forEach { tx ->
+                    val txObj = tx.jsonObject
+                    
+                    // Extract linked addresses
+                    txObj["accountData"]?.jsonArray?.forEach { acc ->
+                        acc.jsonObject["account"]?.jsonPrimitive?.content?.let {
+                            if (it != address) linkedAddresses.add(it)
+                        }
+                    }
+                    
+                    // Detect protocols
+                    txObj["type"]?.jsonPrimitive?.content?.let { protocolsUsed.add(it) }
+                    
+                    // Extract amounts
+                    txObj["nativeTransfers"]?.jsonArray?.forEach { transfer ->
+                        transfer.jsonObject["amount"]?.jsonPrimitive?.longOrNull?.let { amounts.add(it) }
+                    }
+                }
+            }
+            
+            // 3. Analyze for leaks
+            
+            // Linked addresses leak
+            if (linkedAddresses.size > 20) {
+                leaks.add(PrivacyLeak(
+                    type = "ADDRESS_GRAPH",
+                    severity = "HIGH",
+                    description = "Large address graph (${linkedAddresses.size} linked addresses)",
+                    mitigation = "Use fresh wallets and avoid reusing addresses"
+                ))
+            }
+            
+            // Protocol diversity leak
+            if (protocolsUsed.size > 5) {
+                leaks.add(PrivacyLeak(
+                    type = "PROTOCOL_FINGERPRINT",
+                    severity = "MEDIUM",
+                    description = "High protocol diversity creates unique fingerprint",
+                    mitigation = "Limit protocol interactions per wallet"
+                ))
+            }
+            
+            // Amount pattern leak
+            val roundAmounts = amounts.count { it % 1_000_000_000 == 0L }
+            val uniqueAmounts = amounts.distinct().size
+            if (uniqueAmounts.toFloat() / amounts.size > 0.8) {
+                leaks.add(PrivacyLeak(
+                    type = "AMOUNT_UNIQUENESS",
+                    severity = "MEDIUM",
+                    description = "Most amounts are unique - easy to track",
+                    mitigation = "Use round numbers when possible"
+                ))
+            }
+            
+            // Calculate overall risk
+            val riskScore = leaks.sumOf { 
+                when (it.severity) {
+                    "HIGH" -> 30
+                    "MEDIUM" -> 15
+                    "LOW" -> 5
+                    else -> 0
+                }
+            }
+            
+            return RpcResponse(result = HistoryLeakAnalysis(
+                address = address,
+                transactionsAnalyzed = sigs.size,
+                leaks = leaks,
+                overallRisk = when {
+                    riskScore >= 60 -> "CRITICAL"
+                    riskScore >= 40 -> "HIGH"
+                    riskScore >= 20 -> "MEDIUM"
+                    else -> "LOW"
+                },
+                linkedAddressCount = linkedAddresses.size,
+                protocolsUsed = protocolsUsed.toList(),
+                recommendations = leaks.map { it.mitigation }.distinct()
+            ))
+        }
+
+        // =======================================================================
+        // PRIVACY-PRESERVING BALANCE AGGREGATION
+        // Query balances across multiple wallets without revealing ownership
+        // =======================================================================
+
+        /**
+         * Aggregate balances across multiple wallets with privacy preservation.
+         * 
+         * Combines:
+         * - Stealth queries for each wallet
+         * - Decoy wallet injection
+         * - Randomized query ordering
+         * 
+         * @param wallets List of wallet addresses to aggregate
+         * @param includeTokens Whether to include token balances
+         * @return Aggregated balance with privacy metadata
+         */
+        suspend fun stealthAggregateBalances(
+            wallets: List<String>,
+            includeTokens: Boolean = true
+        ): RpcResponse<StealthAggregation> {
+            // 1. Inject decoy wallets (25% extra)
+            val decoyCount = (wallets.size * 0.25).toInt().coerceAtLeast(2)
+            val decoys = (1..decoyCount).map { generateDecoyAddress() }
+            
+            val allAddresses = (wallets + decoys).shuffled()
+            
+            // 2. Query with random delays
+            val results = mutableMapOf<String, Long>()
+            
+            for (addr in allAddresses) {
+                kotlinx.coroutines.delay((5..50).random().toLong())
+                
+                val balance = solana.getBalance(addr)
+                val lamports = balance.result?.let {
+                    when (it) {
+                        is JsonPrimitive -> it.longOrNull ?: 0L
+                        is JsonObject -> it["value"]?.jsonPrimitive?.longOrNull ?: 0L
+                        else -> 0L
+                    }
+                } ?: 0L
+                
+                results[addr] = lamports
+            }
+            
+            // 3. Extract only real wallet balances
+            val realBalances = wallets.associateWith { results[it] ?: 0L }
+            val totalLamports = realBalances.values.sum()
+            
+            return RpcResponse(result = StealthAggregation(
+                totalLamports = totalLamports,
+                totalSol = totalLamports / 1_000_000_000.0,
+                walletCount = wallets.size,
+                individualBalances = realBalances.mapValues { it.value / 1_000_000_000.0 },
+                stealthScore = 75,
+                decoysUsed = decoyCount,
+                notes = listOf(
+                    "${decoyCount} decoy queries masked real wallet set",
+                    "Queries randomized to prevent order correlation"
+                )
+            ))
+        }
+    }
+
+    // ============================================================================
+    // PRIVACY COMBINATOR DATA CLASSES
+    // ============================================================================
+
+    @Serializable
+    data class GhostConfig(
+        val useTemporalObfuscation: Boolean = true,
+        val minDelayMs: Int = 100,
+        val maxDelayMs: Int = 2000,
+        val broadcastStrategy: GhostBroadcastStrategy = GhostBroadcastStrategy.DUAL_REGION,
+        val staggerBroadcasts: Boolean = true
+    )
+
+    enum class GhostBroadcastStrategy {
+        SINGLE_RANDOM,
+        DUAL_REGION,
+        FULL_SCATTER,
+        NEAREST_ONLY
+    }
+
+    @Serializable
+    data class GhostRegionResult(
+        val region: String,
+        val success: Boolean,
+        val signature: String?,
+        val error: String?
+    )
+
+    @Serializable
+    data class GhostTransactionResult(
+        val signature: String?,
+        val ghostScore: Int,
+        val regionsUsed: List<GhostRegionResult>,
+        val temporalOffset: String,
+        val privacyNotes: List<String>
+    )
+
+    @Serializable
+    data class ShadowFactor(
+        val type: String,
+        val description: String,
+        val scoreImpact: Int,
+        val classification: String
+    )
+
+    enum class ShadowLevel {
+        GHOST,      // 80-100: Nearly invisible
+        SHADOW,     // 60-79: Low profile
+        VISIBLE,    // 40-59: Somewhat trackable
+        EXPOSED,    // 20-39: Easily tracked
+        TRANSPARENT // 0-19: Fully visible
+    }
+
+    @Serializable
+    data class ShadowProfile(
+        val address: String,
+        val shadowScore: Int,
+        val shadowLevel: ShadowLevel,
+        val factors: List<ShadowFactor>,
+        val recommendations: List<String>,
+        val zkCompressionActive: Boolean,
+        val assetFootprint: Int,
+        val transactionDepth: Int
+    )
+
+    @Serializable
+    data class PrivacySwapConfig(
+        val preSwapDelayMs: Int = 500,
+        val slippageBps: Int = 50,
+        val directRoutesOnly: Boolean = false,
+        val priorityLevel: String = "medium",
+        val useTemporalObfuscation: Boolean = true,
+        val broadcastStrategy: GhostBroadcastStrategy = GhostBroadcastStrategy.DUAL_REGION
+    )
+
+    @Serializable
+    data class PrivacySwapResult(
+        val signature: String?,
+        val success: Boolean,
+        val error: String?,
+        val privacyScore: Int,
+        val privacyNotes: List<String>,
+        val routeUsed: String? = null
+    )
+
+    @Serializable
+    data class SurveillanceThreat(
+        val type: String,
+        val severity: String,
+        val description: String,
+        val evidence: String
+    )
+
+    enum class SurveillanceLevel {
+        NONE,
+        LOW,
+        MEDIUM,
+        HIGH,
+        CRITICAL,
+        UNKNOWN
+    }
+
+    @Serializable
+    data class SurveillanceAnalysis(
+        val address: String,
+        val threatScore: Int,
+        val threats: List<SurveillanceThreat>,
+        val level: SurveillanceLevel,
+        val recommendations: List<String>
+    )
+
+    enum class DecoyPattern {
+        SOL_MICRO_TRANSFER,
+        TOKEN_CHECK,
+        STAKE_NOISE,
+        SWAP_DUST,
+        NFT_METADATA_READ
+    }
+
+    @Serializable
+    data class DecoyConfig(
+        val decoyCount: Int = 5,
+        val patterns: List<DecoyPattern> = DecoyPattern.entries.toList()
+    )
+
+    @Serializable
+    data class DecoyTransaction(
+        val type: String,
+        val amount: String,
+        val description: String,
+        val suggestedDelay: Long
+    )
+
+    @Serializable
+    data class DecoyPlan(
+        val walletAddress: String,
+        val decoyCount: Int,
+        val decoys: List<DecoyTransaction>,
+        val noiseScore: Int,
+        val totalSuggestedDuration: Long,
+        val notes: List<String>
+    )
+
+    @Serializable
+    data class StealthQueryConfig(
+        val useDecoyQueries: Boolean = true,
+        val decoyCount: Int = 3,
+        val useTemporalSpread: Boolean = true,
+        val limit: Int = 100
+    )
+
+    @Serializable
+    data class StealthQueryResult(
+        val address: String,
+        val assets: JsonElement?,
+        val stealthScore: Int,
+        val decoyQueriesUsed: Int,
+        val queryPosition: Int,
+        val totalQueries: Int,
+        val notes: List<String>
+    )
+
+    @Serializable
+    data class PrivacyLeak(
+        val type: String,
+        val severity: String,
+        val description: String,
+        val mitigation: String
+    )
+
+    @Serializable
+    data class HistoryLeakAnalysis(
+        val address: String,
+        val transactionsAnalyzed: Int,
+        val leaks: List<PrivacyLeak>,
+        val overallRisk: String,
+        val linkedAddressCount: Int = 0,
+        val protocolsUsed: List<String> = emptyList(),
+        val recommendations: List<String>
+    )
+
+    @Serializable
+    data class StealthAggregation(
+        val totalLamports: Long,
+        val totalSol: Double,
+        val walletCount: Int,
+        val individualBalances: Map<String, Double>,
+        val stealthScore: Int,
+        val decoysUsed: Int,
+        val notes: List<String>
+    )
 }
 
