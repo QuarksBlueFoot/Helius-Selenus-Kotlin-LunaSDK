@@ -987,6 +987,9 @@ class IrisQuickNodeClient(
     
     /** RPC rotation for enhanced privacy */
     val rpcRotation: IrisRpcRotationNamespace by lazy { IrisRpcRotationNamespace(this) }
+
+    /** v1.5.0 - Secure Payment Links (No-Wallet Sending) */
+    val paymentLinks: IrisPaymentLinkNamespace by lazy { IrisPaymentLinkNamespace(this) }
     
     // ========================================================================
     // INTERNAL HELPERS
