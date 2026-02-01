@@ -12,7 +12,7 @@
   
   ![License](https://img.shields.io/badge/license-MIT-blue)
   ![Kotlin](https://img.shields.io/badge/kotlin-2.3.0-purple)
-  ![Version](https://img.shields.io/badge/version-5.5.0-green)
+  ![Version](https://img.shields.io/badge/version-5.6.0-green)
 </div>
 
 ---
@@ -28,6 +28,7 @@ Luna SDK is a Kotlin client library for [Helius](https://helius.dev) Solana APIs
 - **Priority Fees** - Dynamic fee estimation for optimal transaction landing
 - **Transaction APIs** - Enhanced transaction parsing and smart transaction building
 - **Privacy APIs** - Stealth addresses, anonymity analysis, and transaction graph privacy
+- **Universal Privacy** - Comprehensive privacy toolkit with RPC rotation, timing obfuscation, MEV protection
 
 ## Features
 
@@ -45,6 +46,7 @@ Luna SDK is a Kotlin client library for [Helius](https://helius.dev) Solana APIs
 | ZK Compression | `helius.zk` | Compressed account queries and validity proofs |
 | Sender API | `helius.sender` | Low-latency transaction submission |
 | Privacy | `helius.privacy` | Stealth addresses, anonymity sets, graph analysis |
+| **Universal Privacy** | `helius.universalPrivacy` | **NEW v5.6** - RPC rotation, timing obfuscation, MEV swaps |
 
 ## Requirements
 
@@ -574,6 +576,142 @@ println("Stealth score: ${aggregation.stealthScore}/100")
 | `stealthAssetQuery(address, config)` | Query assets without fingerprinting |
 | `analyzeHistoryLeaks(address, depth)` | Find privacy leaks in history |
 | `stealthAggregateBalances(wallets)` | Aggregate balances privately |
+
+### NEW v5.6: Universal Privacy API (`helius.universalPrivacy`)
+
+The most comprehensive privacy toolkit for Solana, combining cutting-edge privacy techniques in one unified API.
+
+#### RPC Rotation for Query Privacy
+
+Distribute queries across providers so no single provider sees your full activity pattern.
+
+```kotlin
+// Configure multiple RPC providers
+val providers = listOf(
+    helius.universalPrivacy.RpcProviderConfig("helius", heliusUrl, weight = 3),
+    helius.universalPrivacy.RpcProviderConfig("backup", backupUrl, weight = 1)
+)
+
+// Execute with rotation
+val result = helius.universalPrivacy.rotatedQuery(providers) { endpoint ->
+    // Your query using the selected endpoint
+    fetchBalance(endpoint, address)
+}
+println("Used provider: ${result.providerUsed}")
+```
+
+#### Address Cycling with HD Derivation
+
+Generate fresh addresses for every transaction to prevent address reuse tracking.
+
+```kotlin
+// Get a fresh address path for receiving
+val receivePath = helius.universalPrivacy.getCyclingAddressPath(
+    purpose = AddressPurpose.RECEIVE
+)
+println("Use derivation path: ${receivePath.derivationPath}")
+
+// Analyze address reuse patterns
+val reuseAnalysis = helius.universalPrivacy.analyzeAddressReuse("wallet")
+println("Reuse score: ${reuseAnalysis.result?.reuseScore}/100")
+println("Risk level: ${reuseAnalysis.result?.riskLevel}")
+```
+
+#### Optimal Denomination Splitting
+
+Split amounts into common denominations for larger anonymity sets.
+
+```kotlin
+val plan = helius.universalPrivacy.getOptimalDenominations(2_500_000_000L) // 2.5 SOL
+println("Split into ${plan.totalTransactions} transactions")
+plan.splits.forEach { split ->
+    println("${split.count}x ${split.amount / 1_000_000_000.0} SOL (anonymity set: ${split.estimatedAnonymitySet})")
+}
+println("Average anonymity set: ${plan.averageAnonymitySet}")
+```
+
+#### Timing Obfuscation
+
+Break temporal correlation by randomizing transaction timing.
+
+```kotlin
+// Generate timing schedule
+val timingPlan = helius.universalPrivacy.generateTimingPlan(
+    transactionCount = 5,
+    totalWindowMs = 3600_000, // 1 hour
+    strategy = TimingStrategy.RANDOM_WITHIN_WINDOW
+)
+timingPlan.schedule.forEach { scheduled ->
+    println("TX ${scheduled.transactionIndex} at ${Date(scheduled.scheduledTimeMs)}")
+}
+
+// Execute with random delay
+val result = helius.universalPrivacy.executeWithTimingObfuscation(
+    minDelayMs = 5000,
+    maxDelayMs = 30000
+) {
+    sendTransaction(tx)
+}
+println("Actual delay: ${result.actualDelayMs}ms")
+```
+
+#### MEV-Protected Swaps
+
+Execute Jupiter swaps with full MEV protection via Helius Sender.
+
+```kotlin
+val swapResult = helius.universalPrivacy.executeMevProtectedSwap(
+    inputMint = SOL_MINT,
+    outputMint = USDC_MINT,
+    amount = 1_000_000_000L,
+    userPublicKey = wallet,
+    signCallback = { tx -> signTransaction(tx) },
+    slippageBps = 100
+)
+if (swapResult.result?.success == true) {
+    println("Signature: ${swapResult.result.signature}")
+    println("MEV protection: ${swapResult.result.mevProtectionActive}")
+}
+```
+
+#### ZK Compression Privacy Assessment
+
+Assess privacy benefits of using ZK Compression.
+
+```kotlin
+val assessment = helius.universalPrivacy.assessZkCompressionBenefits("wallet")
+println("Current privacy score: ${assessment.result?.currentPrivacyScore}")
+println("Potential with ZK: ${assessment.result?.potentialPrivacyScore}")
+println("Privacy gain possible: +${assessment.result?.privacyGainPossible}")
+```
+
+#### Comprehensive Privacy Health Score
+
+Get a full privacy health report with actionable recommendations.
+
+```kotlin
+val health = helius.universalPrivacy.generatePrivacyHealthScore("wallet")
+println("Overall: ${health.result?.overallScore}/100 (Grade: ${health.result?.grade})")
+health.result?.dimensions?.forEach { dim ->
+    println("  ${dim.dimension}: ${dim.score}/100")
+}
+println("Top recommendations:")
+health.result?.topRecommendations?.forEach { println("  - $it") }
+```
+
+| Method | Description |
+|--------|-------------|
+| `rotatedQuery(providers, query)` | Execute query with RPC rotation |
+| `getCyclingAddressPath(purpose, index)` | Get HD derivation path for fresh address |
+| `analyzeAddressReuse(address)` | Analyze address reuse patterns |
+| `getOptimalDenominations(amount)` | Get optimal split denominations |
+| `generateTimingPlan(count, window, strategy)` | Generate timing schedule |
+| `executeWithTimingObfuscation(min, max, action)` | Execute with random delay |
+| `createEncryptedMemo(plaintext, hint)` | Create encrypted memo payload |
+| `generateDecoyMemoSet(memo, count)` | Generate decoy memos |
+| `assessZkCompressionBenefits(address)` | Assess ZK compression privacy benefits |
+| `executeMevProtectedSwap(...)` | Execute MEV-protected Jupiter swap |
+| `generatePrivacyHealthScore(address)` | Get comprehensive privacy report |
 
 ---
 

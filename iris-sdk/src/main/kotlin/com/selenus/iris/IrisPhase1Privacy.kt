@@ -5,6 +5,8 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.security.SecureRandom
+import kotlin.random.Random
+import kotlin.random.asKotlinRandom
 
 // ============================================================================
 // IRIS PHASE 1 PRIVACY INNOVATIONS - World-First Features

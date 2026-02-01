@@ -1,6 +1,6 @@
 {
   "name": "@selenus/luna-sdk",
-  "version": "5.2.1",
+  "version": "5.6.0",
   "description": "The most comprehensive Helius Solana SDK for React Native - All APIs, maximum performance",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",

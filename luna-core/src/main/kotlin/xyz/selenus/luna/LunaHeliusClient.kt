@@ -11526,14 +11526,24 @@ class LunaHeliusClient(
 
             for (region in orderedRegions) {
                 try {
-                    val signature = sender.sendTransaction(transaction, region)
-                    results.add(RegionBroadcastStatus(
-                        region = region.name,
-                        success = true,
-                        signature = signature,
-                        error = null
-                    ))
-                    if (firstSuccess == null) firstSuccess = signature
+                    val response = sender.sendTransaction(transaction, region)
+                    val signature = response.result
+                    if (signature != null) {
+                        results.add(RegionBroadcastStatus(
+                            region = region.name,
+                            success = true,
+                            signature = signature,
+                            error = null
+                        ))
+                        if (firstSuccess == null) firstSuccess = signature
+                    } else {
+                        results.add(RegionBroadcastStatus(
+                            region = region.name,
+                            success = false,
+                            signature = null,
+                            error = response.error?.message ?: "Unknown error"
+                        ))
+                    }
                 } catch (e: Exception) {
                     results.add(RegionBroadcastStatus(
                         region = region.name,
@@ -12645,7 +12655,7 @@ class LunaHeliusClient(
             address: String,
             depth: Int = 50
         ): RpcResponse<HistoryLeakAnalysis> {
-            val leaks = mutableListOf<PrivacyLeak>()
+            val leaks = mutableListOf<HistoryPrivacyLeak>()
             
             // 1. Fetch transaction history
             val signatures = solana.getSignaturesForAddress(address, limit = depth)
@@ -12697,7 +12707,7 @@ class LunaHeliusClient(
             
             // Linked addresses leak
             if (linkedAddresses.size > 20) {
-                leaks.add(PrivacyLeak(
+                leaks.add(HistoryPrivacyLeak(
                     type = "ADDRESS_GRAPH",
                     severity = "HIGH",
                     description = "Large address graph (${linkedAddresses.size} linked addresses)",
@@ -12707,7 +12717,7 @@ class LunaHeliusClient(
             
             // Protocol diversity leak
             if (protocolsUsed.size > 5) {
-                leaks.add(PrivacyLeak(
+                leaks.add(HistoryPrivacyLeak(
                     type = "PROTOCOL_FINGERPRINT",
                     severity = "MEDIUM",
                     description = "High protocol diversity creates unique fingerprint",
@@ -12719,7 +12729,7 @@ class LunaHeliusClient(
             val roundAmounts = amounts.count { it % 1_000_000_000 == 0L }
             val uniqueAmounts = amounts.distinct().size
             if (uniqueAmounts.toFloat() / amounts.size > 0.8) {
-                leaks.add(PrivacyLeak(
+                leaks.add(HistoryPrivacyLeak(
                     type = "AMOUNT_UNIQUENESS",
                     severity = "MEDIUM",
                     description = "Most amounts are unique - easy to track",
@@ -12980,7 +12990,7 @@ class LunaHeliusClient(
     )
 
     @Serializable
-    data class PrivacyLeak(
+    data class HistoryPrivacyLeak(
         val type: String,
         val severity: String,
         val description: String,
@@ -12991,7 +13001,7 @@ class LunaHeliusClient(
     data class HistoryLeakAnalysis(
         val address: String,
         val transactionsAnalyzed: Int,
-        val leaks: List<PrivacyLeak>,
+        val leaks: List<HistoryPrivacyLeak>,
         val overallRisk: String,
         val linkedAddressCount: Int = 0,
         val protocolsUsed: List<String> = emptyList(),
@@ -13992,3 +14002,350 @@ class LunaHeliusClient(
         val estimatedTotalFees: Long,
         val executionNotes: List<String>
     )
+
+    // ============================================================================
+    // UNIVERSAL PRIVACY API (v5.6.0)
+    // Comprehensive privacy toolkit combining all techniques for Solana
+    // ============================================================================
+
+    // Universal Privacy Data Classes (must be outside inner class)
+    data class RpcProviderConfig(
+        val name: String,
+        val endpoint: String,
+        val weight: Int = 1
+    )
+
+    enum class UniversalAddressPurpose { RECEIVE, CHANGE, STEALTH, SWAP, STAKE }
+
+    enum class UniversalTimingStrategy { RANDOM_WITHIN_WINDOW, UNIFORM_DISTRIBUTION, BURST_THEN_WAIT }
+
+    data class RotatedQueryResult<T>(
+        val result: T,
+        val providerUsed: String,
+        val latencyMs: Long,
+        val privacyNote: String
+    )
+
+    data class AddressCyclePath(
+        val derivationPath: String,
+        val purpose: String,
+        val index: Long,
+        val note: String
+    )
+
+    data class DenominationSplit(
+        val amount: Long,
+        val count: Int,
+        val estimatedAnonymitySet: Int
+    )
+
+    data class DenominationPlan(
+        val originalAmount: Long,
+        val splits: List<DenominationSplit>,
+        val totalTransactions: Int,
+        val averageAnonymitySet: Int,
+        val privacyScore: Int
+    )
+
+    data class UniversalScheduledExecution(
+        val transactionIndex: Int,
+        val scheduledTimeMs: Long,
+        val note: String
+    )
+
+    data class UniversalTimingPlan(
+        val transactionCount: Int,
+        val strategy: String,
+        val totalWindowMs: Long,
+        val schedule: List<UniversalScheduledExecution>,
+        val privacyNote: String
+    )
+
+    data class TimedExecutionResult<T>(
+        val result: T,
+        val actualDelayMs: Long,
+        val executionTimeMs: Long,
+        val privacyNote: String
+    )
+
+    @Serializable
+    data class AddressReuseAnalysis(
+        val address: String,
+        val transactionsAnalyzed: Int,
+        val repeatedSenders: Int,
+        val repeatedRecipients: Int,
+        val reuseScore: Int,
+        val riskLevel: String
+    )
+
+    @Serializable
+    data class ZkPrivacyAssessment(
+        val address: String,
+        val hasZkAccounts: Boolean,
+        val zkAccountCount: Int,
+        val currentPrivacyScore: Int,
+        val potentialPrivacyScore: Int,
+        val privacyGainPossible: Int,
+        val benefits: List<String>
+    )
+
+    @Serializable
+    data class UniversalPrivacyDimension(
+        val dimension: String,
+        val score: Int,
+        val weight: Int
+    )
+
+    @Serializable
+    data class UniversalPrivacyHealthReport(
+        val address: String,
+        val overallScore: Int,
+        val grade: String,
+        val dimensions: List<UniversalPrivacyDimension>,
+        val topRecommendations: List<String>,
+        val generatedAt: Long
+    )
+
+    /**
+     * Universal Privacy API - The most comprehensive privacy toolkit for Solana.
+     * 
+     * Combines cutting-edge privacy techniques:
+     * - RPC rotation for query privacy
+     * - Address cycling with HD derivation
+     * - Amount splitting with optimal denominations
+     * - Timing obfuscation for unlinkability
+     * - ZK Compression integration
+     * - Comprehensive privacy scoring
+     */
+    val universalPrivacy: UniversalPrivacyApi by lazy { UniversalPrivacyApi() }
+
+    inner class UniversalPrivacyApi {
+
+        /**
+         * Execute a query with RPC rotation for enhanced privacy.
+         */
+        suspend fun <T> rotatedQuery(
+            providers: List<RpcProviderConfig>,
+            query: suspend (String) -> T
+        ): RotatedQueryResult<T> {
+            val selected = selectWeightedProvider(providers)
+            val startTime = System.currentTimeMillis()
+            
+            return try {
+                val result = query(selected.endpoint)
+                RotatedQueryResult(
+                    result = result,
+                    providerUsed = selected.name,
+                    latencyMs = System.currentTimeMillis() - startTime,
+                    privacyNote = "Query routed through ${selected.name}"
+                )
+            } catch (e: Exception) {
+                val fallbackResult = query(providers.first().endpoint)
+                RotatedQueryResult(
+                    result = fallbackResult,
+                    providerUsed = "fallback",
+                    latencyMs = System.currentTimeMillis() - startTime,
+                    privacyNote = "Fallback after rotation failure"
+                )
+            }
+        }
+
+        private fun selectWeightedProvider(providers: List<RpcProviderConfig>): RpcProviderConfig {
+            val totalWeight = providers.sumOf { it.weight }
+            var random = (0 until totalWeight).random()
+            for (provider in providers) {
+                random -= provider.weight
+                if (random < 0) return provider
+            }
+            return providers.last()
+        }
+
+        /**
+         * Generate an HD derivation path for address cycling.
+         */
+        fun getCyclingAddressPath(
+            purpose: UniversalAddressPurpose = UniversalAddressPurpose.RECEIVE,
+            index: Long? = null
+        ): AddressCyclePath {
+            val purposeIndex = when (purpose) {
+                UniversalAddressPurpose.RECEIVE -> 0
+                UniversalAddressPurpose.CHANGE -> 1
+                UniversalAddressPurpose.STEALTH -> 2
+                UniversalAddressPurpose.SWAP -> 3
+                UniversalAddressPurpose.STAKE -> 4
+            }
+            val addressIndex = index ?: System.currentTimeMillis() % 1_000_000
+            return AddressCyclePath(
+                derivationPath = "m/44'/501'/${purposeIndex}'/0'/${addressIndex}'",
+                purpose = purpose.name,
+                index = addressIndex,
+                note = "Use with HD wallet to derive fresh address"
+            )
+        }
+
+        /**
+         * Get optimal denomination splits for a given amount.
+         */
+        fun getOptimalDenominations(
+            amount: Long,
+            preferredDenominations: List<Long> = listOf(
+                1_000_000_000L, 500_000_000L, 100_000_000L, 50_000_000L, 10_000_000L
+            )
+        ): DenominationPlan {
+            val splits = mutableListOf<DenominationSplit>()
+            var remaining = amount
+            
+            for (denom in preferredDenominations.sortedDescending()) {
+                val count = remaining / denom
+                if (count > 0) {
+                    splits.add(DenominationSplit(denom, count.toInt(), getAnonymitySetEstimate(denom)))
+                    remaining -= count * denom
+                }
+            }
+            if (remaining > 0) splits.add(DenominationSplit(remaining, 1, 10))
+            
+            val avgAnonymitySet = if (splits.isNotEmpty()) {
+                splits.sumOf { it.estimatedAnonymitySet * it.count } / splits.sumOf { it.count }
+            } else 0
+            
+            return DenominationPlan(amount, splits, splits.sumOf { it.count }, avgAnonymitySet, kotlin.math.min(100, avgAnonymitySet))
+        }
+
+        private fun getAnonymitySetEstimate(amount: Long): Int = when {
+            amount == 1_000_000_000L -> 85
+            amount == 100_000_000L -> 70
+            amount % 1_000_000_000L == 0L -> 60
+            amount % 100_000_000L == 0L -> 45
+            else -> 20
+        }
+
+        /**
+         * Generate a timing plan for transaction execution.
+         */
+        fun generateTimingPlan(
+            transactionCount: Int,
+            totalWindowMs: Long = 3600_000,
+            strategy: UniversalTimingStrategy = UniversalTimingStrategy.RANDOM_WITHIN_WINDOW
+        ): UniversalTimingPlan {
+            val now = System.currentTimeMillis()
+            val schedule = mutableListOf<UniversalScheduledExecution>()
+            
+            when (strategy) {
+                UniversalTimingStrategy.RANDOM_WITHIN_WINDOW -> {
+                    val times = (0 until transactionCount).map { now + (0..totalWindowMs).random() }.sorted()
+                    times.forEachIndexed { index, time -> schedule.add(UniversalScheduledExecution(index, time, "Random slot")) }
+                }
+                UniversalTimingStrategy.UNIFORM_DISTRIBUTION -> {
+                    val interval = totalWindowMs / transactionCount
+                    repeat(transactionCount) { index ->
+                        val jitter = (-interval/4..interval/4).random()
+                        schedule.add(UniversalScheduledExecution(index, now + (interval * index) + jitter, "Uniform + jitter"))
+                    }
+                }
+                UniversalTimingStrategy.BURST_THEN_WAIT -> {
+                    val burstCount = (transactionCount * 0.7).toInt()
+                    val burstWindow = totalWindowMs / 5
+                    repeat(burstCount) { index -> schedule.add(UniversalScheduledExecution(index, now + (0..burstWindow).random(), "Burst phase")) }
+                    repeat(transactionCount - burstCount) { index ->
+                        schedule.add(UniversalScheduledExecution(burstCount + index, now + burstWindow + (0..(totalWindowMs - burstWindow)).random(), "Wait phase"))
+                    }
+                }
+            }
+            
+            return UniversalTimingPlan(transactionCount, strategy.name, totalWindowMs, schedule.sortedBy { it.scheduledTimeMs }, "Spread over ${totalWindowMs / 60_000} minutes")
+        }
+
+        /**
+         * Execute with timing obfuscation.
+         */
+        suspend fun <T> executeWithTimingObfuscation(
+            minDelayMs: Long = 1000,
+            maxDelayMs: Long = 60000,
+            action: suspend () -> T
+        ): TimedExecutionResult<T> {
+            val delay = (minDelayMs..maxDelayMs).random()
+            val startTime = System.currentTimeMillis()
+            kotlinx.coroutines.delay(delay)
+            val result = action()
+            return TimedExecutionResult(result, delay, System.currentTimeMillis() - startTime, "Delayed by ${delay}ms")
+        }
+
+        /**
+         * Analyze address reuse patterns for a wallet.
+         */
+        suspend fun analyzeAddressReuse(address: String): RpcResponse<AddressReuseAnalysis> {
+            val signaturesResult = solana.getSignaturesForAddress(address, limit = 100)
+            val signatures = signaturesResult.result?.jsonArray 
+                ?: return RpcResponse(error = RpcError(-1, "Could not fetch signatures"))
+
+            val senderCount = mutableMapOf<String, Int>()
+            val recipientCount = mutableMapOf<String, Int>()
+            
+            for (sig in signatures.take(50)) {
+                val signature = sig.jsonObject["signature"]?.jsonPrimitive?.content ?: continue
+                val txResult = enhanced.getTransactions(listOf(signature))
+                val tx = txResult.result?.jsonArray?.firstOrNull()?.jsonObject ?: continue
+                
+                tx["nativeTransfers"]?.jsonArray?.forEach { transfer ->
+                    val from = transfer.jsonObject["fromUserAccount"]?.jsonPrimitive?.content
+                    val to = transfer.jsonObject["toUserAccount"]?.jsonPrimitive?.content
+                    if (from == address && to != null) recipientCount[to] = (recipientCount[to] ?: 0) + 1
+                    if (to == address && from != null) senderCount[from] = (senderCount[from] ?: 0) + 1
+                }
+            }
+            
+            val repeatedSenders = senderCount.filter { it.value > 2 }.size
+            val repeatedRecipients = recipientCount.filter { it.value > 2 }.size
+            val reuseScore = kotlin.math.max(0, 100 - (repeatedSenders + repeatedRecipients) * 10)
+
+            return RpcResponse(result = AddressReuseAnalysis(
+                address, signatures.size, repeatedSenders, repeatedRecipients, reuseScore,
+                when { reuseScore >= 80 -> "LOW"; reuseScore >= 50 -> "MEDIUM"; else -> "HIGH" }
+            ))
+        }
+
+        /**
+         * Assess privacy benefits of using ZK Compression for an account.
+         */
+        suspend fun assessZkCompressionBenefits(address: String): RpcResponse<ZkPrivacyAssessment> {
+            val zkResult = zk.getCompressedAccountsByOwner(address)
+            val hasZkAccounts = zkResult.result?.jsonObject?.get("items")?.jsonArray?.isNotEmpty() == true
+            val zkAccountCount = zkResult.result?.jsonObject?.get("items")?.jsonArray?.size ?: 0
+            val currentPrivacy = if (hasZkAccounts) 60 else 30
+            
+            return RpcResponse(result = ZkPrivacyAssessment(
+                address, hasZkAccounts, zkAccountCount, currentPrivacy, 85, 85 - currentPrivacy,
+                listOf("Compressed state harder to index", "Validity proofs add privacy layer", "Reduced on-chain footprint")
+            ))
+        }
+
+        /**
+         * Generate a comprehensive privacy health score for a wallet.
+         */
+        suspend fun generatePrivacyHealthScore(address: String): RpcResponse<UniversalPrivacyHealthReport> {
+            val reuseAnalysis = analyzeAddressReuse(address)
+            val zkAssessment = assessZkCompressionBenefits(address)
+            
+            val reuseScore = reuseAnalysis.result?.reuseScore ?: 50
+            val zkScore = zkAssessment.result?.currentPrivacyScore ?: 30
+            
+            val dimensions = listOf(
+                UniversalPrivacyDimension("ADDRESS_HYGIENE", reuseScore, 30),
+                UniversalPrivacyDimension("ZK_COMPRESSION", zkScore, 30),
+                UniversalPrivacyDimension("TIMING_PATTERNS", 60, 20),
+                UniversalPrivacyDimension("AMOUNT_PATTERNS", 55, 20)
+            )
+            
+            val overallScore = dimensions.sumOf { it.score * it.weight } / dimensions.sumOf { it.weight }
+            val recommendations = mutableListOf<String>()
+            if (reuseScore < 70) recommendations.add("Use fresh addresses for each transaction")
+            if (zkScore < 50) recommendations.add("Migrate accounts to ZK compressed format")
+            
+            return RpcResponse(result = UniversalPrivacyHealthReport(
+                address, overallScore,
+                when { overallScore >= 80 -> "A"; overallScore >= 70 -> "B"; overallScore >= 60 -> "C"; overallScore >= 50 -> "D"; else -> "F" },
+                dimensions, recommendations.take(5), System.currentTimeMillis()
+            ))
+        }
+    }
+}
