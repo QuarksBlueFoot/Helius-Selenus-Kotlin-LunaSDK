@@ -16,7 +16,7 @@ class PrivacyCombinatorTest {
 
     private val client = LunaHeliusClient(
         apiKey = System.getenv("HELIUS_API_KEY") ?: "test-key",
-        cluster = LunaHeliusClient.Cluster.MAINNET
+        cluster = Cluster.MAINNET
     )
 
     // Test wallet (well-known devnet faucet for testing)
@@ -279,6 +279,7 @@ class PrivacyCombinatorTest {
             type = "ADDRESS_GRAPH",
             severity = "HIGH",
             description = "Large address graph",
+            affectedAddresses = emptyList(),
             mitigation = "Use fresh wallets"
         )
         
