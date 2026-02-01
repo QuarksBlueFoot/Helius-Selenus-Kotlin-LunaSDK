@@ -586,6 +586,8 @@ class LunaHeliusClient(
 
     /** Provides access to the Digital Asset Standard (DAS) API methods. */
     val das: DasApi = DasApi()
+    /** v5.6.0 - Burner Wallet Manager for disposable wallet lifecycles. */
+    val burner: LunaBurnerManager by lazy { LunaBurnerManager(this) }
     /** Provides access to enhanced Solana RPC methods, such as getProgramAccountsV2. */
     val rpc: RpcApi = RpcApi()
     /** Provides access to staking helper methods. */

@@ -959,6 +959,9 @@ class IrisQuickNodeClient(
     
     /** Privacy analysis and innovations */
     val privacy: PrivacyNamespace by lazy { PrivacyNamespace(this) }
+
+    /** v1.5.0 - Whisper: Encrypted On-Chain Memos */
+    val whisper: IrisWhisperNamespace by lazy { IrisWhisperNamespace(this) }
     
     /** Smart transaction building with optimization */
     val smart: SmartNamespace by lazy { SmartNamespace(this) }
