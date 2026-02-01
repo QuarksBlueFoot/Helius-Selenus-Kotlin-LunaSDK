@@ -1,4 +1,4 @@
-# Luna SDK
+# Luna SDK:
 
 <div align="center">
   <p><strong>Kotlin SDK for Helius Solana APIs</strong></p>
