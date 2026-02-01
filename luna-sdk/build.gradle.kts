@@ -5,7 +5,7 @@ plugins {
     signing
 }
 
-version = "5.3.0"
+version = "5.6.0"
 group = "xyz.selenus.luna"
 
 java {
@@ -86,6 +86,10 @@ publishing {
         maven {
             name = "local"
             url = uri(layout.buildDirectory.dir("repo"))
+        }
+        maven {
+            name = "Staging"
+            url = uri(layout.buildDirectory.dir("staging-deploy"))
         }
     }
 }
