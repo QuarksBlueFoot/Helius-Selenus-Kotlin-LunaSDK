@@ -65,7 +65,7 @@ sed -i '/org.gradle.java.home/d' gradle.properties
 
 echo "1. Cleaning and Building Staging Repository..."
 rm -rf luna-sdk/build
-./gradlew :luna-sdk:clean :luna-sdk:publishMavenPublicationToStagingRepository -Pversion=$VERSION --no-daemon || exit 1
+./gradlew :luna-sdk:clean :luna-sdk:publishMavenJavaPublicationToStagingRepository -Pversion=$VERSION --no-daemon || exit 1
 
 echo "2. Zipping Bundle..."
 if [ ! -d "luna-sdk/build/staging-deploy" ]; then

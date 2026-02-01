@@ -86,10 +86,6 @@ publishing {
             name = "local"
             url = uri(layout.buildDirectory.dir("repo"))
         }
-        maven {
-            name = "Staging"
-            url = uri(layout.buildDirectory.dir("staging-deploy"))
-        }
     }
 }
 
