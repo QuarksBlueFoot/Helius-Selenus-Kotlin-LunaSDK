@@ -1,4 +1,4 @@
-package com.selenus.luna
+package xyz.selenus.luna
 
 import kotlin.test.Test
 import kotlin.test.assertNotNull

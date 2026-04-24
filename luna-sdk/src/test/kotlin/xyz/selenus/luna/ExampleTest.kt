@@ -1,4 +1,4 @@
-package com.selenus.luna
+package xyz.selenus.luna
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
@@ -8,6 +8,7 @@ import kotlinx.serialization.json.doubleOrNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import kotlin.test.assertNotNull
+import xyz.selenus.luna.rpc.rpc // extension: exposes client.rpc (luna-rpc module)
 
 /**
  * Working examples of how to use the LunaSDK.

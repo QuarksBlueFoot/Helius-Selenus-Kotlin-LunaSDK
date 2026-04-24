@@ -24,17 +24,21 @@ kotlin {
 }
 
 dependencies {
-    implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.kotlinx.serialization.json)
+    // Exposed in public API surface (suspend fun / @Serializable / JsonElement on signatures)
+    // — downstream feature modules get these transitively.
+    api(libs.kotlinx.coroutines.core)
+    api(libs.kotlinx.serialization.json)
+
+    // Internal implementation details — not exposed to downstream modules.
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
-    
-    // gRPC for Yellowstone streaming
+
+    // gRPC for Yellowstone streaming (internal)
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.grpc.protobuf)
     implementation(libs.grpc.netty.shaded)
     implementation(libs.protobuf.kotlin)
-    
+
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.kotlinx.coroutines.test)
 }

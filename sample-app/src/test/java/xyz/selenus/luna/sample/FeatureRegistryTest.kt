@@ -1,7 +1,7 @@
-package com.selenus.luna.sample
+package xyz.selenus.luna.sample
 
-import com.selenus.luna.Cluster
-import com.selenus.luna.LunaHeliusClient
+import xyz.selenus.luna.Cluster
+import xyz.selenus.luna.LunaHeliusClient
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals

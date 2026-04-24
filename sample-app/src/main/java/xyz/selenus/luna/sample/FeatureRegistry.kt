@@ -1,6 +1,7 @@
-package com.selenus.luna.sample
+package xyz.selenus.luna.sample
 
-import com.selenus.luna.LunaHeliusClient
+import xyz.selenus.luna.LunaHeliusClient
+import xyz.selenus.luna.rpc.rpc // extension: exposes client.rpc (luna-rpc module)
 import kotlinx.serialization.json.*
 
 data class FeatureDemo(

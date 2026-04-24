@@ -6,7 +6,7 @@
 
 > 🗣️ Build Solana transactions by typing in plain English
 
-Luna NLP is a **deterministic, offline-capable** natural language parser for the [Luna SDK](../README.md). It converts human-readable commands into structured transaction intents—no AI, no API calls, instant response.
+Luna NLP is a **deterministic, offline-capable** natural language parser for the [Luna SDK](../README.md). It converts human-readable commands into structured transaction intents: no AI, no API calls, instant response.
 
 ## Features
 

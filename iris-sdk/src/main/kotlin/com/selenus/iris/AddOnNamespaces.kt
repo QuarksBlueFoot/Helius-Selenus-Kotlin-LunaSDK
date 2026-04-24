@@ -317,21 +317,42 @@ class PumpFunNamespace internal constructor(private val client: IrisQuickNodeCli
  * - Minimum 0.001 SOL tip to fastlane tip accounts
  */
 class FastlaneNamespace internal constructor(private val client: IrisQuickNodeClient) {
-    
+
     /**
      * Tip accounts for Transaction Fastlane.
      * Include a tip transfer to one of these in your transaction.
+     *
+     * Each entry is validated at construction time to be a plausible Solana
+     * base58-encoded ed25519 public key (32-44 chars, base58 alphabet).
+     * An invalid entry aborts class loading rather than failing at send-time.
      */
-    val tipAccounts = listOf(
+    val tipAccounts: List<String> = listOf(
         "CHJPZWYoHMkTFtDq75Jmy6FLFcHD5kJhGziBgiNSfmLE",
         "JfxpfrmghH7MWRPB8XMVxQfEhKWVp24ZpvPAHCEQHMoo",
         "mkaneVz99A4gdUfnPaNYedAcBzfnVMRe82rEMWFgBDNK",
         "reUbZqYJHQFN8199b9zGCpkKqBCPyDjpCgzhx42mWt6Q",
         "Xn167LgSxKM6rtHjEjMztFF6u5Vnb1nA6Vvu622GKaRX",
         "ieiGnrpGdBWpCRoW4a3m7zjSUaUxrDbnhpphkF9XUxbN",
-        "cqGQAfzjT2E9LDcHtw5LWQzaeqoQuCkXXPhvUAkoLzkJ",
-        "uthPh9ZGR"
-    )
+        "cqGQAfzjT2E9LDcHtw5LWQzaeqoQuCkXXPhvUAkoLzkJ"
+    ).also { accounts ->
+        require(accounts.isNotEmpty()) { "FastlaneNamespace: tipAccounts must not be empty" }
+        val invalid = accounts.filterNot { it.length in 32..44 && it.all { c -> c in BASE58_ALPHABET } }
+        require(invalid.isEmpty()) {
+            "FastlaneNamespace: malformed tip accounts ${invalid.map { "'$it' (len=${it.length})" }}"
+        }
+    }
+
+    /**
+     * Pick a tip account pseudo-randomly. Spreads tip load across the set
+     * instead of hammering the first entry. Uses [kotlin.random.Random.Default]
+     * (non-cryptographic; tip distribution does not require CSPRNG).
+     */
+    fun randomTipAccount(): String = tipAccounts[kotlin.random.Random.Default.nextInt(tipAccounts.size)]
+
+    private companion object {
+        // Bitcoin/Solana base58 alphabet (0, O, I, l removed to avoid visual ambiguity)
+        private const val BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    }
     
     /**
      * Send a transaction via Fastlane for optimal execution.

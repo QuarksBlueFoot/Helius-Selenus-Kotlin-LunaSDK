@@ -1,4 +1,4 @@
-package com.selenus.luna.sample
+package xyz.selenus.luna.sample
 
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -10,8 +10,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.selenus.luna.Cluster
-import com.selenus.luna.LunaHeliusClient
+import xyz.selenus.luna.Cluster
+import xyz.selenus.luna.LunaHeliusClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

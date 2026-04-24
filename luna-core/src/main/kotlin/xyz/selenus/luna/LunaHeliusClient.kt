@@ -30,8 +30,8 @@ enum class Cluster {
 }
 
 /**
- * Generic JSON‑RPC request wrapper.  The [params] property is a JSON tree and can vary per
- * method.  See the Helius documentation for details on each method’s expected parameters.
+ * Generic JSON-RPC request wrapper.  The [params] property is a JSON tree and can vary per
+ * method.  See the Helius documentation for details on each method's expected parameters.
  */
 @Serializable
 data class RpcRequest<T>(
@@ -42,7 +42,7 @@ data class RpcRequest<T>(
 )
 
 /**
- * Generic JSON‑RPC error returned by Helius when a request fails.
+ * Generic JSON-RPC error returned by Helius when a request fails.
  */
 @Serializable
 data class RpcError(
@@ -52,8 +52,8 @@ data class RpcError(
 )
 
 /**
- * Generic JSON‑RPC response wrapper.  When [error] is non‑null, [result] will be null.
- * When [error] is null, [result] contains the method‑specific payload.
+ * Generic JSON-RPC response wrapper.  When [error] is non-null, [result] will be null.
+ * When [error] is null, [result] contains the method-specific payload.
  */
 @Serializable
 data class RpcResponse<T>(
@@ -67,7 +67,7 @@ data class RpcResponse<T>(
  * Main entry point for interacting with the Helius API from Kotlin.  Pass your API key
  * and optionally a cluster to the constructor.  The client exposes namespaced APIs via
  * properties like [das], [rpc], [staking], [tx], [priority], [enhanced], [webhooks],
- * [ws], and [zk].  These namespaces group related RPC methods and hide the JSON‑RPC
+ * [ws], and [zk].  These namespaces group related RPC methods and hide the JSON-RPC
  * plumbing from callers.
  *
  * Example:
@@ -365,7 +365,7 @@ class LunaHeliusClient(
         }
 
     /**
-     * Executes a JSON‑RPC call against Helius.  The [method] string is the name of the RPC
+     * Executes a JSON-RPC call against Helius.  The [method] string is the name of the RPC
      * method (e.g. `getAsset`), and [params] is a `JsonElement` representing the method
      * arguments.  A [RpcResponse] containing a generic [JsonElement] is returned.  If
      * the HTTP layer returns an error or if Helius indicates an error in the response,
@@ -383,7 +383,7 @@ class LunaHeliusClient(
         params: JsonElement,
         queryParams: Map<String, String> = emptyMap()
     ): RpcResponse<JsonElement> {
-        // Construct the JSON‑RPC payload.  Use a fixed id of "1"; callers may set
+        // Construct the JSON-RPC payload.  Use a fixed id of "1"; callers may set
         // their own id by wrapping this call if correlation is needed.
         val requestPayload = RpcRequest(
             id = "1",
@@ -588,8 +588,10 @@ class LunaHeliusClient(
     val das: DasApi = DasApi()
     /** v5.6.0 - Burner Wallet Manager for disposable wallet lifecycles. */
     val burner: LunaBurnerManager by lazy { LunaBurnerManager(this) }
-    /** Provides access to enhanced Solana RPC methods, such as getProgramAccountsV2. */
-    val rpc: RpcApi = RpcApi()
+    // Enhanced Solana RPC methods (getProgramAccountsV2, getAllProgramAccounts,
+    // getAllTokenAccountsByOwner, getTransactionsForAddress) now live in the
+    // `:luna-rpc` module. Access via `import xyz.selenus.luna.rpc.rpc` then
+    // `client.rpc.<method>()`, or construct `RpcApi(client)` directly.
     /** Provides access to staking helper methods. */
     val staking: StakingApi = StakingApi()
     /** Provides access to transaction helper methods. */
@@ -714,7 +716,7 @@ class LunaHeliusClient(
     inner class DasApi {
         /**
          * Fetch a single asset by its unique identifier.  Returns a JSON tree containing
-         * on‑chain and off‑chain metadata, ownership details and compression state for any
+         * on-chain and off-chain metadata, ownership details and compression state for any
          * Solana digital asset.
          *
          * @param assetId The mint address or asset ID of the NFT, token or cNFT.
@@ -749,7 +751,7 @@ class LunaHeliusClient(
          * tokens held by a user.
          *
          * @param ownerAddress Wallet address whose assets should be listed.
-         * @param page Optional page number (1‑indexed).  When omitted the first page is returned.
+         * @param page Optional page number (1-indexed).  When omitted the first page is returned.
          * @param limit Optional page size.  When omitted the default server limit is used.
          * @param sortBy Optional sort specification.
          * @param before Optional cursor for pagination (before this asset ID).
@@ -807,7 +809,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Fetch multiple assets by their IDs (up to 1 000).  Use this method when you
+         * Fetch multiple assets by their IDs (up to 1 000).  Use this method when you
          * need to fetch many assets in a single request.
          * @param assetIds A list of asset identifiers.
          * @param showFungible Whether to show fungible tokens.
@@ -837,7 +839,7 @@ class LunaHeliusClient(
 
 
         /**
-         * Retrieve a Merkle proof for a compressed NFT by its ID【128353577680464†L142-L147】.
+         * Retrieve a Merkle proof for a compressed NFT by its ID.
          * @param assetId The identifier of the compressed asset.
          */
         suspend fun getAssetProof(assetId: String): RpcResponse<JsonElement> {
@@ -846,7 +848,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Fetch Merkle proofs for multiple compressed NFTs【128353577680464†L146-L148】.
+         * Fetch Merkle proofs for multiple compressed NFTs.
          * @param assetIds The list of compressed asset IDs.
          */
         suspend fun getAssetProofBatch(assetIds: List<String>): RpcResponse<JsonElement> {
@@ -983,7 +985,7 @@ class LunaHeliusClient(
 
         /**
          * Get edition NFTs for a given master NFT.
-         * @param masterAssetId The master NFT’s asset ID.
+         * @param masterAssetId The master NFT's asset ID.
          * @param page Optional page number.
          * @param limit Optional page size.
          */
@@ -1065,176 +1067,10 @@ class LunaHeliusClient(
         }
     }
 
-    /** Enhanced RPC methods namespace. */
-    inner class RpcApi {
-        /**
-         * Enhanced version of getProgramAccounts that supports pagination and incremental
-         * updates【128353577680464†L171-L187】.  Returns account data and a pagination key when more
-         * results are available.
-         *
-         * @param programId The public key of the program whose accounts should be listed.
-         * @param encoding Optional data encoding (e.g. "base64", "base64+zstd").
-         * @param limit Optional page size.
-         * @param paginationKey Optional pagination key from a previous response.
-         * @param changedSinceSlot Optional slot to return accounts changed after this slot.
-         */
-        suspend fun getProgramAccountsV2(
-            programId: String,
-            encoding: String? = null,
-            limit: Int? = null,
-            paginationKey: String? = null,
-            changedSinceSlot: Long? = null
-        ): RpcResponse<JsonElement> {
-            // Build the options object.  The JSON‑RPC method expects an array with
-            // [programId, options] rather than a named object.
-            val options = buildJsonObject {
-                encoding?.let { put("encoding", it) }
-                limit?.let { put("limit", it) }
-                paginationKey?.let { put("paginationKey", it) }
-                changedSinceSlot?.let { put("changedSinceSlot", it) }
-            }
-            val params = buildJsonArray {
-                add(JsonPrimitive(programId))
-                add(options)
-            }
-            return rpcCall("getProgramAccountsV2", params)
-        }
-
-        /**
-         * Auto‑paginate through all program accounts for a given program.  Use
-         * this with caution on large programs because it can produce a large
-         * response【128353577680464†L180-L186】.
-         * @param programId The program ID.
-         * @param encoding Optional encoding.
-         */
-        suspend fun getAllProgramAccounts(
-            programId: String,
-            encoding: String? = null
-        ): RpcResponse<JsonElement> {
-            val options = buildJsonObject {
-                encoding?.let { put("encoding", it) }
-            }
-            val params = buildJsonArray {
-                add(JsonPrimitive(programId))
-                add(options)
-            }
-            return rpcCall("getAllProgramAccounts", params)
-        }
-
-        /**
-         * Enhanced version of getTokenAccountsByOwner with pagination and
-         * incremental update support【128353577680464†L182-L184】.
-         * @param owner The owner address to query.
-         * @param mint Optional mint address to filter by.
-         * @param limit Optional page size.
-         * @param paginationKey Optional pagination key from a previous response.
-         * @param changedSinceSlot Optional slot for incremental updates.
-         */
-        suspend fun getTokenAccountsByOwnerV2(
-            owner: String,
-            mint: String? = null,
-            limit: Int? = null,
-            paginationKey: String? = null,
-            changedSinceSlot: Long? = null
-        ): RpcResponse<JsonElement> {
-            val options = buildJsonObject {
-                mint?.let { put("mint", it) }
-                limit?.let { put("limit", it) }
-                paginationKey?.let { put("paginationKey", it) }
-                changedSinceSlot?.let { put("changedSinceSlot", it) }
-            }
-            val params = buildJsonArray {
-                add(JsonPrimitive(owner))
-                add(options)
-            }
-            return rpcCall("getTokenAccountsByOwnerV2", params)
-        }
-
-        /**
-         * Auto‑paginate through all token accounts owned by a given address【128353577680464†L185-L186】.
-         * @param owner The owner’s public key.
-         * @param mint Optional mint filter.
-         */
-        suspend fun getAllTokenAccountsByOwner(owner: String, mint: String? = null): RpcResponse<JsonElement> {
-            val options = buildJsonObject {
-                mint?.let { put("mint", it) }
-            }
-            val params = buildJsonArray {
-                add(JsonPrimitive(owner))
-                add(options)
-            }
-            return rpcCall("getAllTokenAccountsByOwner", params)
-        }
-
-        /**
-         * Retrieve transaction history for a given address with advanced filtering
-         * and sorting.
-         *
-         * @param address The address to query.
-         * @param options A map of additional options for filtering, sorting and pagination.
-         */
-        suspend fun getTransactionsForAddress(
-            address: String,
-            options: Map<String, JsonElement> = emptyMap()
-        ): RpcResponse<JsonElement> {
-            val optionsObj = JsonObject(options)
-            val params = buildJsonArray {
-                add(JsonPrimitive(address))
-                add(optionsObj)
-            }
-            return rpcCall("getTransactionsForAddress", params)
-        }
-
-        /**
-         * Retrieve transaction history for a given address with advanced filtering
-         * and sorting (Strongly Typed Overload).
-         *
-         * @param address The address to query.
-         * @param transactionDetails Level of detail: "signatures" or "full".
-         * @param sortOrder "asc" (oldest first) or "desc" (newest first).
-         * @param limit Max transactions to return (1000 for signatures, 100 for full).
-         * @param paginationToken Token for fetching the next page.
-         * @param commitment Commitment level (e.g. "finalized").
-         * @param filters Advanced filtering options (slot, blockTime, signature, status).
-         * @param encoding Encoding for transaction data (only for "full" details).
-         * @param maxSupportedTransactionVersion Max transaction version to return.
-         * @param minContextSlot Minimum slot for request evaluation.
-         */
-        suspend fun getTransactionsForAddress(
-            address: String,
-            transactionDetails: String? = null,
-            sortOrder: String? = null,
-            limit: Int? = null,
-            paginationToken: String? = null,
-            commitment: String? = null,
-            filters: JsonObject? = null,
-            encoding: String? = null,
-            maxSupportedTransactionVersion: Int? = null,
-            minContextSlot: Long? = null
-        ): RpcResponse<JsonElement> {
-            val options = buildJsonObject {
-                transactionDetails?.let { put("transactionDetails", it) }
-                sortOrder?.let { put("sortOrder", it) }
-                limit?.let { put("limit", it) }
-                paginationToken?.let { put("paginationToken", it) }
-                commitment?.let { put("commitment", it) }
-                filters?.let { put("filters", it) }
-                encoding?.let { put("encoding", it) }
-                maxSupportedTransactionVersion?.let { put("maxSupportedTransactionVersion", it) }
-                minContextSlot?.let { put("minContextSlot", it) }
-            }
-            val params = buildJsonArray {
-                add(JsonPrimitive(address))
-                add(options)
-            }
-            return rpcCall("getTransactionsForAddress", params)
-        }
-    }
-
     /**
-     * Staking helper methods.  These methods wrap Helius’ staking endpoints which
+     * Staking helper methods.  These methods wrap Helius' staking endpoints which
      * produce transactions or instructions for delegating, undelegating and
-     * withdrawing lamports from Solana stake accounts【128353577680464†L194-L206】.
+     * withdrawing lamports from Solana stake accounts.
      */
     inner class StakingApi {
         /**
@@ -1301,7 +1137,7 @@ class LunaHeliusClient(
 
         /**
          * Return the instructions for creating and delegating a stake account without
-         * constructing the full transaction【128353577680464†L200-L203】.
+         * constructing the full transaction.
          * Useful when combining instructions in a custom transaction.
          * @param wallet Funding wallet address.
          * @param amountLamports Amount of lamports to delegate.
@@ -1321,7 +1157,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return the instruction to deactivate a stake account【128353577680464†L202-L203】.
+         * Return the instruction to deactivate a stake account.
          * @param stakeAccount The stake account to deactivate.
          */
         suspend fun getUnstakeInstruction(stakeAccount: String): RpcResponse<JsonElement> {
@@ -1330,7 +1166,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return the instruction to withdraw lamports from a stake account【128353577680464†L203-L205】.
+         * Return the instruction to withdraw lamports from a stake account.
          * @param stakeAccount The stake account to withdraw from.
          * @param amountLamports The amount of lamports to withdraw.
          */
@@ -1346,9 +1182,9 @@ class LunaHeliusClient(
         }
 
         /**
-         * Determine how many lamports are withdrawable from a stake account【128353577680464†L206-L207】.
+         * Determine how many lamports are withdrawable from a stake account.
          * @param stakeAccount The stake account.
-         * @param includeRentExempt Whether to include the rent‑exempt reserve.
+         * @param includeRentExempt Whether to include the rent-exempt reserve.
          */
         suspend fun getWithdrawableAmount(
             stakeAccount: String,
@@ -1362,7 +1198,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return all stake accounts delegated to the Helius validator for a given wallet【128353577680464†L208-L209】.
+         * Return all stake accounts delegated to the Helius validator for a given wallet.
          * @param wallet The wallet address.
          */
         suspend fun getHeliusStakeAccounts(wallet: String): RpcResponse<JsonElement> {
@@ -1374,7 +1210,7 @@ class LunaHeliusClient(
     /**
      * Transaction helper methods.  These simplify sending and managing Solana transactions
      * through Helius.  All methods return a raw JSON tree; see the official docs for
-     * expected response fields【128353577680464†L214-L233】.
+     * expected response fields.
      */
     inner class TransactionApi {
         /** Fetch the estimated compute units a transaction will consume. */
@@ -1385,7 +1221,7 @@ class LunaHeliusClient(
 
         /**
          * Broadcast a fully signed transaction and poll for confirmation.  The
-         * transaction must be base64 encoded and signed client‑side.
+         * transaction must be base64 encoded and signed client-side.
          */
         suspend fun broadcastTransaction(serializedTransaction: String): RpcResponse<JsonElement> {
             val params = buildJsonObject { put("transaction", serializedTransaction) }
@@ -1542,7 +1378,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Submit a transaction using the ultra‑low latency Helius Sender service.
+         * Submit a transaction using the ultra-low latency Helius Sender service.
          * This method routes the transaction to validators and Jito infrastructure.
          * 
          * Note: The transaction must be fully signed. If you wish to include a Jito tip,
@@ -1621,7 +1457,7 @@ class LunaHeliusClient(
 
     /**
      * Enhanced Transactions API.  Converts raw transaction data into human readable
-     * form and fetches transactions by address【128353577680464†L245-L256】.
+     * form and fetches transactions by address.
      */
     inner class EnhancedApi {
         /**
@@ -1666,9 +1502,9 @@ class LunaHeliusClient(
     }
 
     /**
-     * Webhooks API.  Enables developers to subscribe to on‑chain events such as sales,
+     * Webhooks API.  Enables developers to subscribe to on-chain events such as sales,
      * listings, swaps or account changes and receive HTTP callbacks when those events
-     * occur【128353577680464†L260-L276】.
+     * occur.
      */
     inner class WebhookApi {
         /**
@@ -2035,7 +1871,7 @@ class LunaHeliusClient(
 
     /**
      * ZK Compression helper methods.  These wrap Helius endpoints that index and
-     * validate compressed accounts【128353577680464†L303-L346】.
+     * validate compressed accounts.
      */
     inner class ZkCompressionApi {
         /** Retrieve a compressed account by its hash or address. */
@@ -2046,7 +1882,7 @@ class LunaHeliusClient(
 
         /**
          * Return signatures of transactions that created or closed a compressed account
-         * with the given hash【128353577680464†L348-L352】.
+         * with the given hash.
          */
         suspend fun getCompressionSignaturesForAccount(hash: String): RpcResponse<JsonElement> {
             val params = buildJsonObject { put("hash", hash) }
@@ -2055,7 +1891,7 @@ class LunaHeliusClient(
 
         /**
          * Return signatures of transactions that created or closed compressed accounts
-         * owned by the given address【128353577680464†L352-L357】.
+         * owned by the given address.
          */
         suspend fun getCompressionSignaturesForAddress(address: String): RpcResponse<JsonElement> {
             val params = buildJsonObject { put("address", address) }
@@ -2063,7 +1899,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Get a Merkle proof for a compressed account by its hash or address【800459967483568†L590-L594】.
+         * Get a Merkle proof for a compressed account by its hash or address.
          * @param hashOrAddress The compressed account hash or address.
          */
         suspend fun getCompressedAccountProof(hashOrAddress: String): RpcResponse<JsonElement> {
@@ -2072,7 +1908,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return all compressed accounts owned by a specific address【800459967483568†L592-L596】.
+         * Return all compressed accounts owned by a specific address.
          * @param owner The owner address.
          */
         suspend fun getCompressedAccountsByOwner(owner: String): RpcResponse<JsonElement> {
@@ -2081,7 +1917,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Retrieve the balance for a compressed account【800459967483568†L594-L597】.
+         * Retrieve the balance for a compressed account.
          * @param hashOrAddress Hash or address of the compressed account.
          */
         suspend fun getCompressedBalance(hashOrAddress: String): RpcResponse<JsonElement> {
@@ -2090,7 +1926,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Retrieve the combined balance for all compressed accounts owned by an address【800459967483568†L596-L598】.
+         * Retrieve the combined balance for all compressed accounts owned by an address.
          * @param owner Owner address.
          */
         suspend fun getCompressedBalanceByOwner(owner: String): RpcResponse<JsonElement> {
@@ -2099,7 +1935,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return the balances for holders of a compressed mint in descending order【800459967483568†L598-L600】.
+         * Return the balances for holders of a compressed mint in descending order.
          * @param mint The compressed mint address.
          */
         suspend fun getCompressedMintTokenHolders(mint: String): RpcResponse<JsonElement> {
@@ -2108,7 +1944,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return the token balance for a compressed token account【800459967483568†L600-L603】.
+         * Return the token balance for a compressed token account.
          * @param tokenAccount The compressed token account address.
          */
         suspend fun getCompressedTokenAccountBalance(tokenAccount: String): RpcResponse<JsonElement> {
@@ -2117,7 +1953,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return compressed token accounts delegated to a specific delegate【800459967483568†L602-L604】.
+         * Return compressed token accounts delegated to a specific delegate.
          * @param delegate The delegate address.
          */
         suspend fun getCompressedTokenAccountsByDelegate(delegate: String): RpcResponse<JsonElement> {
@@ -2126,7 +1962,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return compressed token accounts owned by a specific owner【800459967483568†L604-L607】.
+         * Return compressed token accounts owned by a specific owner.
          * @param owner The owner address.
          */
         suspend fun getCompressedTokenAccountsByOwner(owner: String): RpcResponse<JsonElement> {
@@ -2135,7 +1971,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Retrieve token balances for compressed accounts owned by an address【800459967483568†L606-L609】.
+         * Retrieve token balances for compressed accounts owned by an address.
          * @param owner The owner address.
          */
         suspend fun getCompressedTokenBalancesByOwner(owner: String): RpcResponse<JsonElement> {
@@ -2144,7 +1980,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Retrieve token balances for compressed accounts owned by an address (V2)【800459967483568†L609-L611】.
+         * Retrieve token balances for compressed accounts owned by an address (V2).
          * @param owner The owner address.
          */
         suspend fun getCompressedTokenBalancesByOwnerV2(owner: String): RpcResponse<JsonElement> {
@@ -2153,7 +1989,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return signatures of transactions that modified an owner’s compressed accounts【800459967483568†L617-L619】.
+         * Return signatures of transactions that modified an owner's compressed accounts.
          * @param owner The owner address.
          */
         suspend fun getCompressionSignaturesForOwner(owner: String): RpcResponse<JsonElement> {
@@ -2162,7 +1998,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return signatures of transactions that modified an owner’s compressed token accounts【800459967483568†L620-L622】.
+         * Return signatures of transactions that modified an owner's compressed token accounts.
          * @param owner The token owner address.
          */
         suspend fun getCompressionSignaturesForTokenOwner(owner: String): RpcResponse<JsonElement> {
@@ -2171,7 +2007,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Check indexer health; returns ok if indexer is within a few blocks of the head【800459967483568†L623-L625】.
+         * Check indexer health; returns ok if indexer is within a few blocks of the head.
          */
         suspend fun getIndexerHealth(): RpcResponse<JsonElement> {
             val params = JsonObject(emptyMap())
@@ -2179,7 +2015,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Retrieve the slot of the last block indexed by the compression indexer【800459967483568†L625-L626】.
+         * Retrieve the slot of the last block indexed by the compression indexer.
          */
         suspend fun getIndexerSlot(): RpcResponse<JsonElement> {
             val params = JsonObject(emptyMap())
@@ -2187,7 +2023,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return the signatures of the latest compression program transactions【800459967483568†L627-L629】.
+         * Return the signatures of the latest compression program transactions.
          * @param limit Optional limit on number of signatures to return (defaults to server limit).
          */
         suspend fun getLatestCompressionSignatures(limit: Int? = null): RpcResponse<JsonElement> {
@@ -2198,7 +2034,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return the signatures of the latest non‑voting transactions【800459967483568†L629-L630】.
+         * Return the signatures of the latest non-voting transactions.
          * @param limit Optional limit on number of signatures to return.
          */
         suspend fun getLatestNonVotingSignatures(limit: Int? = null): RpcResponse<JsonElement> {
@@ -2209,7 +2045,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return proofs for multiple compressed accounts【800459967483568†L631-L633】.
+         * Return proofs for multiple compressed accounts.
          * @param hashesOrAddresses A list of compressed account hashes or addresses.
          */
         suspend fun getMultipleCompressedAccountProofs(hashesOrAddresses: List<String>): RpcResponse<JsonElement> {
@@ -2220,7 +2056,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Retrieve multiple compressed accounts by their hashes or addresses【800459967483568†L633-L634】.
+         * Retrieve multiple compressed accounts by their hashes or addresses.
          * @param hashesOrAddresses A list of hashes or addresses.
          */
         suspend fun getMultipleCompressedAccounts(hashesOrAddresses: List<String>): RpcResponse<JsonElement> {
@@ -2231,7 +2067,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Fetch proofs that the provided new addresses are unused and can be created【800459967483568†L635-L637】.
+         * Fetch proofs that the provided new addresses are unused and can be created.
          * @param newAddresses List of new compressed addresses to prove.
          */
         suspend fun getMultipleNewAddressProofs(newAddresses: List<String>): RpcResponse<JsonElement> {
@@ -2242,7 +2078,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Fetch proofs (V2) that the provided new addresses are unused and can be created【800459967483568†L637-L639】.
+         * Fetch proofs (V2) that the provided new addresses are unused and can be created.
          * @param newAddresses List of new compressed addresses.
          */
         suspend fun getMultipleNewAddressProofsV2(newAddresses: List<String>): RpcResponse<JsonElement> {
@@ -2253,7 +2089,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Retrieve a transaction and parse compression info associated with it【800459967483568†L639-L641】.
+         * Retrieve a transaction and parse compression info associated with it.
          * @param signature The transaction signature.
          */
         suspend fun getTransactionWithCompressionInfo(signature: String): RpcResponse<JsonElement> {
@@ -2262,7 +2098,7 @@ class LunaHeliusClient(
         }
 
         /**
-         * Return a ZK validity proof used to verify compressed accounts and new address creation【800459967483568†L641-L644】.
+         * Return a ZK validity proof used to verify compressed accounts and new address creation.
          * @param args An object containing accounts and new addresses arrays as documented in the Helius API.
          */
         suspend fun getValidityProof(args: JsonObject): RpcResponse<JsonElement> {
