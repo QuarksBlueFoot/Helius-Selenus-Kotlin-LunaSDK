@@ -1,0 +1,480 @@
+package xyz.selenus.luna
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.serialization.Serializable
+import java.security.KeyPairGenerator
+import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * # Luna Burner Wallet Manager
+ * 
+ * A "Daily Driver" utility for managing disposable "Burner" wallets.
+ * Perfect for minting NFTs, interacting with untrusted dApps, or one-off transactions
+ * where you want to protect your main wallet's hygiene.
+ * 
+ * ## Features
+ * - **Instant Gen**: Create disposable keys in memory.
+ * - **Task Templates**: Pre-calculated funding for common operations (mint, swap, approve).
+ * - **Smart Funding**: Calculate exact needed funding including rent exemption.
+ * - **Session Tracking**: Monitor all active burners and their status.
+ * - **Token Cleanup**: Close empty SPL token accounts to reclaim rent.
+ * - **Dust Sweeping**: One-call cleanup to close token accounts and return SOL to safety.
+ * - **Activity Log**: Track what each burner was used for.
+ * - **Expiration Alerts**: TTL-based reminders to clean up stale burners.
+ */
+class LunaBurnerManager(private val client: LunaHeliusClient) {
+
+    // In-memory session tracking (use DB/SharedPrefs in production)
+    private val activeBurners = ConcurrentHashMap<String, BurnerSession>()
+    
+    // ========================================================================
+    // TASK TEMPLATES - Pre-configured funding for common operations
+    // ========================================================================
+    
+    /**
+     * Common Solana operations with estimated costs.
+     * These are conservative estimates including priority fee buffers.
+     */
+    enum class BurnerTask(
+        val displayName: String,
+        val baseLamports: Long,
+        val rentLamports: Long,
+        val description: String
+    ) {
+        /** Simple SOL transfer */
+        TRANSFER("SOL Transfer", 5000L, 0L, "Send SOL to another wallet"),
+        
+        /** Mint a single NFT (Metaplex) */
+        NFT_MINT("NFT Mint", 15000L, 2039280L, "Mint one NFT via Metaplex"),
+        
+        /** Approve a dApp to spend tokens */
+        TOKEN_APPROVE("Token Approval", 5000L, 0L, "Approve spending for a dApp"),
+        
+        /** Swap on Jupiter/Raydium */
+        DEX_SWAP("DEX Swap", 25000L, 0L, "Execute a token swap"),
+        
+        /** Create Associated Token Account */
+        CREATE_ATA("Create ATA", 5000L, 2039280L, "Create token account"),
+        
+        /** Stake SOL */
+        STAKE("Stake SOL", 10000L, 2282880L, "Create stake account and delegate"),
+        
+        /** Sign a message (no on-chain cost, but funded for recovery) */
+        SIGN_MESSAGE("Sign Message", 5000L, 0L, "Off-chain signature only"),
+        
+        /** Interact with unknown dApp (extra buffer) */
+        UNKNOWN_DAPP("Unknown dApp", 50000L, 2039280L, "Risky interaction with buffer"),
+        
+        /** Pump.fun token launch participation */
+        PUMP_FUN("Pump.fun Trade", 30000L, 2039280L, "Buy/sell on bonding curve"),
+        
+        /** Compressed NFT mint */
+        CNFT_MINT("cNFT Mint", 8000L, 0L, "Mint compressed NFT (cheaper)")
+    }
+
+    // ========================================================================
+    // BURNER CREATION
+    // ========================================================================
+
+    /**
+     * Creates a new ephemeral burner wallet.
+     * 
+     * @param label Optional label to identify this burner locally.
+     * @param tasks Planned tasks for automatic funding calculation.
+     * @param ttlMinutes Time-to-live before expiration warning (default 60 min).
+     */
+    fun createBurner(
+        label: String = "Burner",
+        tasks: List<BurnerTask> = emptyList(),
+        ttlMinutes: Int = 60
+    ): BurnerWallet {
+        val kpg = KeyPairGenerator.getInstance("Ed25519")
+        val kp = kpg.generateKeyPair()
+        
+        // In real impl, convert to Base58
+        val pubKey = "Burner" + Base64.getUrlEncoder().withoutPadding().encodeToString(kp.public.encoded).take(16)
+        val privKey = Base64.getUrlEncoder().encodeToString(kp.private.encoded)
+        
+        val wallet = BurnerWallet(
+            publicKey = pubKey,
+            privateKey = privKey,
+            label = "$label-${System.currentTimeMillis()}",
+            createdAt = System.currentTimeMillis(),
+            expiresAt = System.currentTimeMillis() + (ttlMinutes * 60 * 1000L),
+            plannedTasks = tasks.map { it.name }
+        )
+        
+        // Track in session
+        val session = BurnerSession(
+            wallet = wallet,
+            status = BurnerStatus.CREATED,
+            fundingNeeded = calculateFundingForTasks(tasks),
+            activityLog = mutableListOf("Created at ${java.time.Instant.now()}")
+        )
+        activeBurners[pubKey] = session
+        
+        return wallet
+    }
+
+    /**
+     * Quick-create a burner for a specific task.
+     */
+    fun createBurnerForTask(task: BurnerTask, label: String? = null): BurnerWallet {
+        return createBurner(
+            label = label ?: task.displayName,
+            tasks = listOf(task)
+        )
+    }
+
+    // ========================================================================
+    // FUNDING CALCULATION
+    // ========================================================================
+
+    /**
+     * Calculates the "Safe Funding Amount" for a burner.
+     * 
+     * When funding a burner, you often over-fund. This utility calculates the precise
+     * amount needed for a specific set of intended actions (e.g., "1 Mint + 2 Approvals").
+     * 
+     * @param intendedTransactionCount Number of transactions planned.
+     * @param rentExemptionNeeded Whether account rent is needed.
+     * @return Lamports recommended to transfer.
+     */
+    fun calculateFundingNeeded(
+        intendedTransactionCount: Int,
+        rentExemptionNeeded: Boolean = false
+    ): Long {
+        val networkFeeBuffer = 5000L * intendedTransactionCount * 2 // 2x buffer for priority fees
+        val rent = if (rentExemptionNeeded) 890880L else 0L // ~0.00089 SOL for account rent
+        
+        return networkFeeBuffer + rent
+    }
+
+    /**
+     * Calculate funding needed for a list of tasks.
+     * Includes 10% buffer for priority fee fluctuations.
+     */
+    fun calculateFundingForTasks(tasks: List<BurnerTask>): FundingEstimate {
+        val baseFees = tasks.sumOf { it.baseLamports }
+        val rentFees = tasks.sumOf { it.rentLamports }
+        val subtotal = baseFees + rentFees
+        val buffer = (subtotal * 0.10).toLong() // 10% buffer
+        val total = subtotal + buffer
+        
+        return FundingEstimate(
+            baseFees = baseFees,
+            rentFees = rentFees,
+            buffer = buffer,
+            totalLamports = total,
+            totalSol = total / 1_000_000_000.0,
+            breakdown = tasks.map { "${it.displayName}: ${(it.baseLamports + it.rentLamports) / 1_000_000_000.0} SOL" }
+        )
+    }
+
+    /**
+     * Get funding instructions for a burner.
+     */
+    fun getFundingInstructions(burner: BurnerWallet): String {
+        val session = activeBurners[burner.publicKey]
+        val amount = session?.fundingNeeded?.totalSol ?: 0.01
+        
+        return """
+            |== FUND YOUR BURNER ==
+            |
+            |Address: ${burner.publicKey}
+            |Amount:  ${"%.6f".format(amount)} SOL
+            |
+            |Send EXACTLY this amount from your main wallet.
+            |Do NOT over-fund - excess will be swept back later.
+            |
+            |Pro Tip: Use a privacy-aware route:
+            |  1. Withdraw from CEX directly to burner
+            |  2. Use a "Gas Station" intermediate wallet
+            |  3. Fund via Payment Link (iris.paymentLinks)
+        """.trimMargin()
+    }
+
+    // ========================================================================
+    // SWEEP & CLEANUP
+    // ========================================================================
+
+    /**
+     * "Sweep" the burner wallet.
+     * 
+     * Generates a transaction to send ALL available SOL (minus fees) back to safety.
+     * This is crucial for privacy: old dormant wallets with dust are privacy leaks.
+     * 
+     * @param burner The burner wallet to drain.
+     * @param destination The safe wallet to return funds to.
+     * @return The sweep result with signature and reclaimed amounts.
+     */
+    suspend fun sweepDust(burner: BurnerWallet, destination: String): SweepResult {
+        return withContext(Dispatchers.IO) {
+            val session = activeBurners[burner.publicKey]
+            session?.activityLog?.add("Sweep initiated to $destination")
+            
+            // 1. Get SOL Balance (would call client.rpc in real impl)
+            // val balanceResponse = client.rpc.getBalance(burner.publicKey)
+            val solBalance = 0L // Placeholder - would extract from RPC response
+            
+            // 2. Find all token accounts
+            val tokenAccounts = findTokenAccounts(burner.publicKey)
+            
+            // 3. Calculate sweep fee
+            val baseFee = 5000L
+            val closeAccountFees = tokenAccounts.size * 5000L
+            val totalFee = baseFee + closeAccountFees
+            
+            // 4. Calculate reclaimable rent from closing accounts
+            val reclaimableRent = tokenAccounts.sumOf { it.rentLamports }
+            
+            // 5. Net sweep amount
+            val netSweep = solBalance + reclaimableRent - totalFee
+            
+            if (netSweep <= 0) {
+                session?.status = BurnerStatus.EMPTY
+                return@withContext SweepResult(
+                    signature = null,
+                    solSwept = 0L,
+                    tokenAccountsClosed = 0,
+                    rentReclaimed = 0L,
+                    feePaid = 0L,
+                    status = "EMPTY - Nothing to sweep"
+                )
+            }
+            
+            // 6. Build & send sweep transaction
+            // In real impl: SystemProgram.transfer + CloseAccount instructions
+            val mockSig = "sig_sweep_${burner.label}_${System.currentTimeMillis()}"
+            
+            session?.status = BurnerStatus.SWEPT
+            session?.activityLog?.add("Swept ${netSweep / 1_000_000_000.0} SOL to $destination")
+            
+            SweepResult(
+                signature = mockSig,
+                solSwept = netSweep,
+                tokenAccountsClosed = tokenAccounts.size,
+                rentReclaimed = reclaimableRent,
+                feePaid = totalFee,
+                status = "SUCCESS"
+            )
+        }
+    }
+
+    /**
+     * Close all empty token accounts to reclaim rent.
+     * Useful even without sweeping SOL - just cleaning up token account dust.
+     */
+    suspend fun closeEmptyTokenAccounts(burner: BurnerWallet, rentDestination: String): CloseAccountsResult {
+        return withContext(Dispatchers.IO) {
+            val tokenAccounts = findTokenAccounts(burner.publicKey)
+            val emptyAccounts = tokenAccounts.filter { it.balance == 0L }
+            
+            if (emptyAccounts.isEmpty()) {
+                return@withContext CloseAccountsResult(
+                    accountsClosed = 0,
+                    rentReclaimed = 0L,
+                    signatures = emptyList()
+                )
+            }
+            
+            val rentReclaimed = emptyAccounts.sumOf { it.rentLamports }
+            
+            // In real impl: batch CloseAccount instructions
+            val mockSig = "sig_close_${emptyAccounts.size}_accounts"
+            
+            CloseAccountsResult(
+                accountsClosed = emptyAccounts.size,
+                rentReclaimed = rentReclaimed,
+                signatures = listOf(mockSig)
+            )
+        }
+    }
+
+    /**
+     * Full cleanup: close token accounts, sweep SOL, mark as retired.
+     */
+    suspend fun fullCleanup(burner: BurnerWallet, destination: String): FullCleanupResult {
+        val closeResult = closeEmptyTokenAccounts(burner, destination)
+        val sweepResult = sweepDust(burner, destination)
+        
+        activeBurners[burner.publicKey]?.status = BurnerStatus.RETIRED
+        
+        return FullCleanupResult(
+            burnerAddress = burner.publicKey,
+            tokenAccountsClosed = closeResult.accountsClosed,
+            rentReclaimed = closeResult.rentReclaimed + sweepResult.rentReclaimed,
+            solSwept = sweepResult.solSwept,
+            totalRecovered = closeResult.rentReclaimed + sweepResult.solSwept,
+            status = "RETIRED"
+        )
+    }
+
+    // ========================================================================
+    // SESSION MANAGEMENT
+    // ========================================================================
+
+    /**
+     * Get all active burner sessions.
+     */
+    fun getActiveBurners(): List<BurnerSession> {
+        return activeBurners.values.toList()
+    }
+
+    /**
+     * Get burners that are past their TTL (need cleanup).
+     */
+    fun getExpiredBurners(): List<BurnerSession> {
+        val now = System.currentTimeMillis()
+        return activeBurners.values.filter { 
+            it.wallet.expiresAt < now && it.status != BurnerStatus.RETIRED 
+        }
+    }
+
+    /**
+     * Get a summary of all burner activity.
+     */
+    fun getSessionSummary(): BurnerSessionSummary {
+        val sessions = activeBurners.values.toList()
+        return BurnerSessionSummary(
+            totalCreated = sessions.size,
+            activeCount = sessions.count { it.status == BurnerStatus.FUNDED || it.status == BurnerStatus.CREATED },
+            expiredCount = sessions.count { it.wallet.expiresAt < System.currentTimeMillis() && it.status != BurnerStatus.RETIRED },
+            sweptCount = sessions.count { it.status == BurnerStatus.SWEPT || it.status == BurnerStatus.RETIRED },
+            burners = sessions.map { 
+                BurnerSummaryItem(
+                    address = it.wallet.publicKey,
+                    label = it.wallet.label,
+                    status = it.status,
+                    age = (System.currentTimeMillis() - it.wallet.createdAt) / 1000 / 60 // minutes
+                )
+            }
+        )
+    }
+
+    /**
+     * Log activity for a burner.
+     */
+    fun logActivity(burner: BurnerWallet, activity: String) {
+        activeBurners[burner.publicKey]?.activityLog?.add(
+            "${java.time.Instant.now()}: $activity"
+        )
+    }
+
+    /**
+     * Mark burner as funded.
+     */
+    fun markFunded(burner: BurnerWallet) {
+        activeBurners[burner.publicKey]?.let {
+            it.status = BurnerStatus.FUNDED
+            it.activityLog.add("Marked as funded")
+        }
+    }
+
+    // ========================================================================
+    // HELPERS
+    // ========================================================================
+
+    private suspend fun findTokenAccounts(owner: String): List<TokenAccountInfo> {
+        // In real impl: client.rpc.getTokenAccountsByOwner(owner)
+        // Return parsed list of token accounts with balances
+        return emptyList()
+    }
+}
+
+// ============================================================================
+// DATA CLASSES
+// ============================================================================
+
+@Serializable
+data class BurnerWallet(
+    val publicKey: String,
+    val privateKey: String, // Keep in memory only!
+    val label: String,
+    val createdAt: Long,
+    val expiresAt: Long = 0L,
+    val plannedTasks: List<String> = emptyList()
+)
+
+@Serializable
+data class BurnerSession(
+    val wallet: BurnerWallet,
+    var status: BurnerStatus,
+    val fundingNeeded: FundingEstimate?,
+    val activityLog: MutableList<String> = mutableListOf()
+)
+
+@Serializable
+enum class BurnerStatus {
+    CREATED,    // Just generated, not yet funded
+    FUNDED,     // Has SOL, ready for use
+    IN_USE,     // Currently being used for transactions
+    EMPTY,      // All funds spent
+    SWEPT,      // Dust swept back to safety
+    RETIRED     // Fully cleaned up, should not be reused
+}
+
+@Serializable
+data class FundingEstimate(
+    val baseFees: Long,
+    val rentFees: Long,
+    val buffer: Long,
+    val totalLamports: Long,
+    val totalSol: Double,
+    val breakdown: List<String>
+)
+
+@Serializable
+data class TokenAccountInfo(
+    val mint: String,
+    val address: String,
+    val balance: Long,
+    val rentLamports: Long = 2039280L
+)
+
+@Serializable
+data class SweepResult(
+    val signature: String?,
+    val solSwept: Long,
+    val tokenAccountsClosed: Int,
+    val rentReclaimed: Long,
+    val feePaid: Long,
+    val status: String
+)
+
+@Serializable
+data class CloseAccountsResult(
+    val accountsClosed: Int,
+    val rentReclaimed: Long,
+    val signatures: List<String>
+)
+
+@Serializable
+data class FullCleanupResult(
+    val burnerAddress: String,
+    val tokenAccountsClosed: Int,
+    val rentReclaimed: Long,
+    val solSwept: Long,
+    val totalRecovered: Long,
+    val status: String
+)
+
+@Serializable
+data class BurnerSessionSummary(
+    val totalCreated: Int,
+    val activeCount: Int,
+    val expiredCount: Int,
+    val sweptCount: Int,
+    val burners: List<BurnerSummaryItem>
+)
+
+@Serializable
+data class BurnerSummaryItem(
+    val address: String,
+    val label: String,
+    val status: BurnerStatus,
+    val age: Long // minutes
+)

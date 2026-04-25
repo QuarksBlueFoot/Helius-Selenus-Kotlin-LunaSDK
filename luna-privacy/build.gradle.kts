@@ -25,6 +25,14 @@ kotlin {
 
 dependencies {
     api(project(":luna-core"))
+    // Privacy classes call back into other extracted feature namespaces
+    // (e.g. PrivacyApi.analyzeWalletPrivacy uses client.das.getAssetsByOwner).
+    api(project(":luna-das"))
+    api(project(":luna-rpc"))
+    api(project(":luna-priority"))
+    api(project(":luna-enhanced-tx"))
+    api(project(":luna-jupiter"))
+    api(project(":luna-analytics"))
 }
 
 tasks.test {

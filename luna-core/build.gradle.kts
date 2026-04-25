@@ -24,13 +24,14 @@ kotlin {
 }
 
 dependencies {
-    // Exposed in public API surface (suspend fun / @Serializable / JsonElement on signatures)
-    // — downstream feature modules get these transitively.
+    // Exposed in public API surface (suspend fun / @Serializable / JsonElement on signatures,
+    // and the public `httpClient: OkHttpClient` / `json: Json` properties on LunaHeliusClient).
+    // Downstream feature modules get these transitively.
     api(libs.kotlinx.coroutines.core)
     api(libs.kotlinx.serialization.json)
+    api(libs.okhttp)
 
     // Internal implementation details — not exposed to downstream modules.
-    implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
 
     // gRPC for Yellowstone streaming (internal)

@@ -1,59 +1,54 @@
 /**
- * Privacy APIs - v5.2.0
- * 
- * Advanced privacy features for Solana
+ * Privacy APIs - v5.7.0
+ *
+ * Advanced privacy features for Solana.
+ *
+ * !! StealthAddressApi is currently a fail-loud stub !!
+ * The previous v5.2.0 implementation silently returned hardcoded strings
+ * ('ephemeral_pub', 'shared_secret', etc.) which would have shipped fake
+ * stealth addresses to production. The methods now throw `NotImplementedError`
+ * pending a proper implementation with @noble/curves (ed25519 + x25519 ECDH)
+ * and @noble/hashes (sha512 for view-tag derivation). Track at:
+ * BUILD_STATUS.md → "Phase 3 status — crypto correctness".
  */
 
 import type { LunaHeliusClient } from '../../LunaHeliusClient';
 import type { RpcResponse, StealthAddress, PrivacyScore, GraphPrivacyAnalysis, ShieldedTransactionPattern } from '../../types';
 
+/**
+ * Thrown by stub privacy methods that would otherwise silently return fake
+ * crypto material. Callers seeing this in production must wire up @noble/curves
+ * (or equivalent) and replace the stub.
+ */
+export class StealthAddressNotImplementedError extends Error {
+  constructor(method: string) {
+    super(
+      `[Luna SDK] StealthAddressApi.${method} is not implemented in this RN ` +
+        `build. The previous implementation returned hardcoded fake values ` +
+        `('ephemeral_pub' / 'shared_secret' / 'stealth_address') which is ` +
+        `dangerous in production. Add @noble/curves + @noble/hashes and ` +
+        `implement before shipping. See BUILD_STATUS.md.`
+    );
+    this.name = 'StealthAddressNotImplementedError';
+  }
+}
+
 // Stealth Address API
 export class StealthAddressApi {
   constructor(private readonly _client: LunaHeliusClient) {}
 
-  /** Generate a stealth address for receiving funds privately */
-  async generateStealthAddress(recipientViewKey: string): Promise<RpcResponse<StealthAddress>> {
-    // Stealth address generation using ECDH
-    const ephemeralKeypair = this.generateEphemeralKeypair();
-    const sharedSecret = this.deriveSharedSecret(ephemeralKeypair.privateKey, recipientViewKey);
-    const stealthAddress = this.deriveStealthAddress(sharedSecret);
-    const viewTag = this.computeViewTag(sharedSecret);
-
-    return {
-      result: {
-        ephemeralPubkey: ephemeralKeypair.publicKey,
-        stealthAddress,
-        viewTag,
-      },
-      error: null,
-    };
+  /** Generate a stealth address for receiving funds privately. NOT IMPLEMENTED. */
+  async generateStealthAddress(_recipientViewKey: string): Promise<RpcResponse<StealthAddress>> {
+    throw new StealthAddressNotImplementedError('generateStealthAddress');
   }
 
-  /** Scan for incoming stealth payments */
+  /** Scan for incoming stealth payments. NOT IMPLEMENTED. */
   async scanForPayments(_params: {
     viewKey: string;
     startSlot?: number;
     endSlot?: number;
   }): Promise<RpcResponse<any[]>> {
-    // Would scan blockchain for payments to stealth addresses
-    return { result: [], error: null };
-  }
-
-  private generateEphemeralKeypair(): { publicKey: string; privateKey: string } {
-    // Placeholder - would use crypto library
-    return { publicKey: 'ephemeral_pub', privateKey: 'ephemeral_priv' };
-  }
-
-  private deriveSharedSecret(_privateKey: string, _publicKey: string): string {
-    return 'shared_secret';
-  }
-
-  private deriveStealthAddress(_sharedSecret: string): string {
-    return 'stealth_address';
-  }
-
-  private computeViewTag(sharedSecret: string): string {
-    return sharedSecret.substring(0, 4);
+    throw new StealthAddressNotImplementedError('scanForPayments');
   }
 }
 

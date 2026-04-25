@@ -5,7 +5,7 @@ plugins {
     signing
 }
 
-version = "5.6.0"
+version = "5.7.0"
 group = "xyz.selenus.luna"
 
 java {
@@ -38,6 +38,10 @@ dependencies {
     api(project(":luna-innovations"))
     api(project(":luna-privacy"))
     api(project(":luna-jupiter"))
+    api(project(":luna-wallet"))        // v5.7 — Helius Wallet API (Beta)
+    api(project(":luna-laserstream"))   // v5.7 — LaserStream + Enhanced WS (Flow)
+    api(project(":luna-keys"))          // v5.7 — Keypair + Base58 + on-curve check
+    api(project(":luna-solana-pay"))    // v5.7 — Solana Pay URI builder/parser
 }
 
 tasks.test {

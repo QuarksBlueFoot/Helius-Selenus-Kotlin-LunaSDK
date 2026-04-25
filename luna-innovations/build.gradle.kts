@@ -25,6 +25,16 @@ kotlin {
 
 dependencies {
     api(project(":luna-core"))
+    // Innovation classes call back into other extracted feature namespaces
+    // (e.g. StrategyEngineApi uses client.jupiter.getQuote, NetworkIntelligenceApi uses client.priority).
+    api(project(":luna-das"))
+    api(project(":luna-rpc"))
+    api(project(":luna-priority"))
+    api(project(":luna-enhanced-tx"))
+    api(project(":luna-jupiter"))
+    api(project(":luna-analytics"))
+    // WalletCorrelationApi calls client.privacy.analyzeAddressLinkage
+    api(project(":luna-privacy"))
 }
 
 tasks.test {

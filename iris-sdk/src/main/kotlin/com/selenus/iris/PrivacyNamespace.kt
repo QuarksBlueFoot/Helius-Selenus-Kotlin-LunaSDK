@@ -217,43 +217,33 @@ class PrivacyNamespace internal constructor(private val client: IrisQuickNodeCli
      * @param recipientViewingKey The recipient's public viewing key
      * @return Stealth address details for sending funds
      */
+    /**
+     * Generate a stealth address for receiving funds privately.
+     *
+     * **NOT IMPLEMENTED.** The previous implementation used:
+     *  - `kotlin.random.Random` for "ephemeral keypair" (predictable from a few outputs)
+     *  - `String.hashCode()` for "shared secret" (32-bit collisions are trivial)
+     *  - `secret.toByteArray().take(32)` for "stealth address" (no curve operations)
+     *
+     * Anyone who shipped a stealth address from that implementation would
+     * have catastrophically broken privacy — the "stealth" address would be
+     * trivially recoverable. Rather than ship that, we fail loud.
+     *
+     * Proper implementation requires:
+     *  1. Ed25519 → X25519 birational mapping (we have Ed25519 derivation in
+     *     luna-keys; X25519 conversion is a separate ~50 LOC effort).
+     *  2. X25519 ECDH between ephemeral key and recipient viewing key.
+     *  3. Hash-to-curve derivation of the stealth address point.
+     *
+     * Tracked as a follow-up. For now, callers should use
+     * `xyz.selenus.luna.keys.SolanaKeypair.fromSecretSeed` for real keypairs
+     * and integrate with a vetted stealth-address library when receiving
+     * private funds.
+     */
+    @Suppress("UNUSED_PARAMETER")
     suspend fun generateStealthAddress(
         recipientViewingKey: String
-    ): StealthAddress {
-        // Generate ephemeral keypair (simplified - use proper crypto in production)
-        val ephemeralPublicKey = generateRandomPublicKey()
-        
-        // Derive shared secret (simplified placeholder)
-        val sharedSecret = deriveSharedSecret(ephemeralPublicKey, recipientViewingKey)
-        
-        // Derive stealth address from shared secret
-        val stealthAddress = deriveStealthAddress(sharedSecret)
-        
-        return StealthAddress(
-            ephemeralPublicKey = ephemeralPublicKey,
-            stealthAddress = stealthAddress,
-            viewingKey = recipientViewingKey,
-            spendingKeyEncrypted = "" // Encrypted spending key for recipient
-        )
-    }
-    
-    private fun generateRandomPublicKey(): String {
-        // Placeholder - use proper ed25519 key generation
-        val bytes = ByteArray(32)
-        Random.nextBytes(bytes)
-        return bytes.toBase58()
-    }
-    
-    private fun deriveSharedSecret(ephemeralKey: String, viewingKey: String): String {
-        // Placeholder - use proper ECDH
-        return "$ephemeralKey-$viewingKey".hashCode().toString()
-    }
-    
-    private fun deriveStealthAddress(sharedSecret: String): String {
-        // Placeholder - derive actual ed25519 public key
-        val bytes = sharedSecret.toByteArray().take(32).toByteArray()
-        return bytes.toBase58()
-    }
+    ): StealthAddress = throw IrisStealthAddressNotImplementedError()
     
     // ========================================================================
     // JITO BUNDLE MIXING

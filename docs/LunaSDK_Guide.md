@@ -59,8 +59,8 @@ dependencies {
 Initialize the client with your Helius API key and desired cluster.
 
 ```kotlin
-import com.selenus.luna.LunaHeliusClient
-import com.selenus.luna.Cluster
+import xyz.selenus.luna.LunaHeliusClient
+import xyz.selenus.luna.Cluster
 
 val apiKey = "YOUR_API_KEY"
 val client = LunaHeliusClient(apiKey, Cluster.MAINNET)
@@ -643,7 +643,7 @@ You can run the examples using Gradle. The test file contains a `main` function 
 3.  Run the `main` function from your IDE, or use the following Gradle command:
 
 ```bash
-./gradlew :luna-sdk:test --tests "com.selenus.luna.ExampleTest"
+./gradlew :luna-sdk:test --tests "xyz.selenus.luna.ExampleTest"
 ```
 
 Note: Ensure you have a valid API key and, for some examples, a funded wallet if you intend to execute transactions.

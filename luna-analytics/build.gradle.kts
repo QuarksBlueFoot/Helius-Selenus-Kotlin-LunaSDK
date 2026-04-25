@@ -25,6 +25,10 @@ kotlin {
 
 dependencies {
     api(project(":luna-core"))
+    // Analytics cross-references DAS (for asset ownership queries) and the
+    // Enhanced RPC namespace (for paginated signatures).
+    implementation(project(":luna-das"))
+    implementation(project(":luna-rpc"))
 }
 
 tasks.test {

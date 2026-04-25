@@ -3,6 +3,10 @@ package xyz.selenus.luna.sample
 import xyz.selenus.luna.LunaHeliusClient
 import xyz.selenus.luna.rpc.rpc // extension: exposes client.rpc (luna-rpc module)
 import kotlinx.serialization.json.*
+import xyz.selenus.luna.das.das  // extension: client.das (from :luna-das)
+import xyz.selenus.luna.enhanced.enhanced  // extension: client.enhanced (from :luna-enhanced)
+import xyz.selenus.luna.priority.priority  // extension: client.priority (from :luna-priority)
+import xyz.selenus.luna.webhooks.webhooks  // extension: client.webhooks (from :luna-webhooks)
 
 data class FeatureDemo(
     val name: String,
