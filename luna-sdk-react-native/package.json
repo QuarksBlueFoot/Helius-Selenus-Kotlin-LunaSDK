@@ -99,6 +99,9 @@
     ]
   },
   "dependencies": {
-    "@solana/web3.js": "^1.95.0"
+    "@solana/web3.js": "^1.95.0",
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.5.0",
+    "bs58": "^6.0.0"
   }
 }

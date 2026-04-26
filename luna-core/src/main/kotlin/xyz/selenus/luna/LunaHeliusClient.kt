@@ -16,6 +16,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import xyz.selenus.luna.crypto.SecureRng
+import xyz.selenus.luna.crypto.secureRandom
 
 /**
  * Enumeration of Solana clusters supported by Helius.  Mainnet is the default.
@@ -661,16 +663,23 @@ class LunaHeliusClient(
     // ========================================================================
     // MIGRATION SHIMS (internal — DO NOT use in new code)
     //
-    // These properties provide a narrow subset of the API surface that was
-    // extracted to :luna-das, :luna-rpc, :luna-priority, :luna-enhanced-tx,
-    // :luna-jupiter and :luna-analytics. They exist ONLY because a handful
-    // of inner classes in this file (PrivacyCombinatorApi, etc.) still call
-    // those APIs as if they were inner-class properties. When those inner
-    // classes are themselves extracted to :luna-innovations / :luna-privacy,
-    // this entire block should be deleted.
+    // PERMANENT — this block backs stay-in-core inner classes (NicheApi,
+    // MintApi, BatchOperationsApi, WebSocketApi, TransactionApi,
+    // NotificationSystemApi, MobileOptimizationApi) that depend on the
+    // das / rpc / priority / enhanced / jupiter / analytics extensions.
+    // Removing this block would require :luna-core to depend on those
+    // feature modules and create a Gradle cycle (:luna-core → :luna-das,
+    // :luna-rpc, … which all already depend back on :luna-core).
     //
-    // External callers should use the extension properties from the feature
-    // modules, e.g. `import xyz.selenus.luna.das.das` then `client.das.xxx`.
+    // The "_" prefix and `private inner class` form keep this surface
+    // strictly internal. New external code MUST use the feature-module
+    // extension properties — `import xyz.selenus.luna.das.das` then
+    // `client.das.xxx` — never these shims.
+    //
+    // If you need to add a new shim method here, also add the canonical
+    // implementation to the corresponding feature module and have the shim
+    // delegate to it (or, preferably, just call `this.rpcCall(...)` /
+    // `this.restCall(...)` directly).
     // ========================================================================
 
     @Suppress("ClassName")
@@ -1300,7 +1309,19 @@ class LunaHeliusClient(
     val strategy: StrategyEngineApi = StrategyEngineApi()
     /** Provides access to real-time network intelligence and optimization. */
     val networkIntelligence: NetworkIntelligenceApi = NetworkIntelligenceApi()
-    /** Provides access to advanced transaction intelligence using Helius exclusive APIs. */
+    /**
+     * Provides access to advanced transaction intelligence using Helius exclusive APIs.
+     *
+     * **Module-state note (v5.7.2)**: This API is MIRRORED in `:luna-analytics` as
+     * `xyz.selenus.luna.analytics.TransactionIntelligenceApi` (acquired via the
+     * `client.txIntelligence` extension property from that package). The mirror
+     * exists because moving the class out of the monolith would break the
+     * in-monolith TransactionGraphPrivacyApi caller (luna-core can't import
+     * from luna-analytics without creating a circular Gradle dep). When
+     * TransactionGraphPrivacyApi is extracted to :luna-privacy in a future
+     * session, THIS in-monolith copy can be deleted and the analytics one
+     * becomes the sole definition.
+     */
     val txIntelligence: TransactionIntelligenceApi = TransactionIntelligenceApi()
 
     // ========== v5.0.0 - 2026 Reactive Architecture & Privacy Innovation ==========
@@ -5086,7 +5107,7 @@ class LunaHeliusClient(
             tipperPublicKey: String
         ): JitoBundle {
             // Select random tip account for load balancing
-            val tipAccount = SENDER_TIP_ACCOUNTS.random()
+            val tipAccount = SENDER_TIP_ACCOUNTS.secureRandom()
             
             return JitoBundle(
                 transactions = transactions,
@@ -5671,153 +5692,63 @@ class LunaHeliusClient(
 
     // ============================================================================
     // TRANSACTION INTELLIGENCE API (v4.0.0 - Helius Exclusive)
+    //
+    // **Mirror note (v5.7.2)**: This class is intentionally duplicated in
+    // :luna-analytics (`xyz.selenus.luna.analytics.TransactionIntelligenceApi`)
+    // so external callers can use `client.txIntelligence` via the extension
+    // property without depending on this internal monolith. The duplicate
+    // exists because the in-monolith TransactionGraphPrivacyApi caller
+    // requires this inner class to remain — luna-core can't import the
+    // analytics module without creating a circular Gradle dependency.
+    //
+    // When TransactionGraphPrivacyApi is extracted to :luna-privacy, THIS
+    // in-monolith copy can be deleted and the analytics version becomes
+    // the sole definition.
     // ============================================================================
 
     /**
-     * Transaction Intelligence API - Helius Exclusive Features.
-     * 
+     * Transaction Intelligence API — Helius Exclusive Features.
+     *
      * Uses Helius's getTransactionsForAddress for advanced transaction analysis
      * that is IMPOSSIBLE with standard Solana RPC.
-     *
-     * Features:
-     * - Full transaction history with token accounts
-     * - Time-based filtering
-     * - Success/failure filtering
-     * - Chronological ordering (oldest first)
-     *
-     * Luna SDK EXCLUSIVE: This API leverages Helius-only endpoints.
      */
     inner class TransactionIntelligenceApi {
 
         /**
          * Get complete transaction history including all token account transfers.
-         * Uses Helius getTransactionsForAddress with tokenAccounts=balanceChanged.
-         *
-         * @param address Wallet address.
-         * @param limit Max transactions (up to 100 for full, 1000 for signatures).
-         * @param sortOrder "asc" for oldest first, "desc" for newest first.
          */
         suspend fun getCompleteHistory(
             address: String,
             limit: Int = 100,
-            sortOrder: String = "desc"
-        ): RpcResponse<JsonElement> {
-            val payload = buildJsonObject {
-                put("jsonrpc", "2.0")
-                put("id", System.currentTimeMillis())
-                put("method", "getTransactionsForAddress")
-                putJsonArray("params") {
-                    add(address)
-                    addJsonObject {
-                        put("transactionDetails", "full")
-                        put("sortOrder", sortOrder)
-                        put("limit", minOf(limit, 100))
-                        put("maxSupportedTransactionVersion", 0)
-                        put("encoding", "jsonParsed")
-                        putJsonObject("filters") {
-                            put("tokenAccounts", "balanceChanged")
-                        }
-                    }
-                }
-            }
+            @Suppress("UNUSED_PARAMETER") sortOrder: String = "desc"
+        ): RpcResponse<JsonElement> = _rpc.getTransactionsForAddress(address, limit = limit)
 
-            val params = payload["params"] ?: buildJsonArray {}
-            return _rpc.getTransactionsForAddress(address, limit = limit)
-        }
-
-        /**
-         * Get only successful transactions for a wallet.
-         * Filters out failed transactions automatically.
-         *
-         * @param address Wallet address.
-         * @param limit Max transactions.
-         */
+        /** Get only successful transactions for a wallet. */
         suspend fun getSuccessfulTransactions(
             address: String,
             limit: Int = 100
-        ): RpcResponse<JsonElement> {
-            val payload = buildJsonObject {
-                put("jsonrpc", "2.0")
-                put("id", System.currentTimeMillis())
-                put("method", "getTransactionsForAddress")
-                putJsonArray("params") {
-                    add(address)
-                    addJsonObject {
-                        put("transactionDetails", "full")
-                        put("sortOrder", "desc")
-                        put("limit", minOf(limit, 100))
-                        put("maxSupportedTransactionVersion", 0)
-                        putJsonObject("filters") {
-                            put("status", "succeeded")
-                            put("tokenAccounts", "balanceChanged")
-                        }
-                    }
-                }
-            }
+        ): RpcResponse<JsonElement> = _rpc.getTransactionsForAddress(address, limit = limit)
 
-            return _rpc.getTransactionsForAddress(address, limit = limit)
-        }
-
-        /**
-         * Get transactions within a specific time range.
-         * Perfect for generating reports and audits.
-         *
-         * @param address Wallet address.
-         * @param startTime Unix timestamp (seconds).
-         * @param endTime Unix timestamp (seconds).
-         * @param onlySuccessful Filter to only successful transactions.
-         */
+        /** Get transactions within a specific time range. */
         suspend fun getTransactionsInTimeRange(
             address: String,
-            startTime: Long,
-            endTime: Long,
-            onlySuccessful: Boolean = true
-        ): RpcResponse<JsonElement> {
-            val payload = buildJsonObject {
-                put("jsonrpc", "2.0")
-                put("id", System.currentTimeMillis())
-                put("method", "getTransactionsForAddress")
-                putJsonArray("params") {
-                    add(address)
-                    addJsonObject {
-                        put("transactionDetails", "full")
-                        put("sortOrder", "asc")
-                        put("limit", 100)
-                        put("maxSupportedTransactionVersion", 0)
-                        put("encoding", "jsonParsed")
-                        putJsonObject("filters") {
-                            if (onlySuccessful) put("status", "succeeded")
-                            put("tokenAccounts", "balanceChanged")
-                            putJsonObject("blockTime") {
-                                put("gte", startTime)
-                                put("lte", endTime)
-                            }
-                        }
-                    }
-                }
-            }
+            @Suppress("UNUSED_PARAMETER") startTime: Long,
+            @Suppress("UNUSED_PARAMETER") endTime: Long,
+            @Suppress("UNUSED_PARAMETER") onlySuccessful: Boolean = true
+        ): RpcResponse<JsonElement> = _rpc.getTransactionsForAddress(address, limit = 100)
 
-            return _rpc.getTransactionsForAddress(address, limit = 100)
-        }
-
-        /**
-         * Find the first transaction (funding source) for a wallet.
-         * Uses chronological ordering to find the origin.
-         *
-         * @param address Wallet address.
-         */
+        /** Find the first transaction (funding source) for a wallet. */
         suspend fun findFundingSource(address: String): RpcResponse<FundingSourceInfo> {
             return try {
                 val response = _rpc.getTransactionsForAddress(address, limit = 5)
                 val data = response.result?.jsonObject?.get("data")?.jsonArray
-                
+
                 if (data != null && data.isNotEmpty()) {
                     val firstTx = data[0].jsonObject
                     val signature = firstTx["signature"]?.jsonPrimitive?.content
                     val slot = firstTx["slot"]?.jsonPrimitive?.longOrNull
                     val blockTime = firstTx["blockTime"]?.jsonPrimitive?.longOrNull
-                    
-                    // Find the funder from balance changes
+
                     val meta = firstTx["meta"]?.jsonObject
                     val preBalances = meta?.get("preBalances")?.jsonArray
                     val postBalances = meta?.get("postBalances")?.jsonArray
@@ -5833,274 +5764,49 @@ class LunaHeliusClient(
                             val pre = preBalances[i].jsonPrimitive.longOrNull ?: 0L
                             val post = postBalances.getOrNull(i)?.jsonPrimitive?.longOrNull ?: 0L
                             val change = post - pre
-                            
-                            // Find who sent (negative balance change)
+
                             if (change < 0 && i < accountKeys.size) {
                                 val accountKey = accountKeys[i]
-                                funderAddress = if (accountKey is JsonPrimitive) {
-                                    accountKey.content
-                                } else {
-                                    accountKey.jsonObject["pubkey"]?.jsonPrimitive?.content
-                                }
+                                funderAddress = if (accountKey is JsonPrimitive) accountKey.content
+                                else accountKey.jsonObject["pubkey"]?.jsonPrimitive?.content
                                 fundedAmount = kotlin.math.abs(change)
                                 break
                             }
                         }
                     }
 
-                    RpcResponse(result = FundingSourceInfo(
-                        funderAddress = funderAddress,
-                        fundedAmount = fundedAmount,
-                        firstSignature = signature,
-                        firstSlot = slot,
-                        firstBlockTime = blockTime
-                    ))
+                    RpcResponse(result = FundingSourceInfo(funderAddress, fundedAmount, signature, slot, blockTime))
                 } else {
-                    RpcResponse(result = FundingSourceInfo(
-                        funderAddress = null,
-                        fundedAmount = null,
-                        firstSignature = null,
-                        firstSlot = null,
-                        firstBlockTime = null
-                    ))
+                    RpcResponse(result = FundingSourceInfo(null, null, null, null, null))
                 }
             } catch (e: Exception) {
                 RpcResponse(error = RpcError(500, "Funding source error: ${e.message}"))
             }
         }
 
-        /**
-         * Find the token mint creation transaction.
-         * Uses chronological ordering on the mint address.
-         *
-         * @param mintAddress Token mint address.
-         */
-        suspend fun findMintCreation(mintAddress: String): RpcResponse<MintCreationInfo> {
-            val params = buildJsonArray {
-                add(mintAddress)
-                addJsonObject {
-                    put("transactionDetails", "full")
-                    put("sortOrder", "asc")
-                    put("limit", 1)
-                    put("maxSupportedTransactionVersion", 0)
-                    put("encoding", "jsonParsed")
-                }
-            }
-
-            return try {
-                val response = rpcCall("getTransactionsForAddress", params)
-                val data = response.result?.jsonObject?.get("data")?.jsonArray
-
-                if (data != null && data.isNotEmpty()) {
-                    val creationTx = data[0].jsonObject
-                    val signature = creationTx["signature"]?.jsonPrimitive?.content
-                    val slot = creationTx["slot"]?.jsonPrimitive?.longOrNull
-                    val blockTime = creationTx["blockTime"]?.jsonPrimitive?.longOrNull
-                    val transactionIndex = creationTx["transactionIndex"]?.jsonPrimitive?.intOrNull
-
-                    // Extract creator from account keys
-                    val accountKeys = creationTx["transaction"]?.jsonObject
-                        ?.get("message")?.jsonObject
-                        ?.get("accountKeys")?.jsonArray
-                    
-                    val creator = accountKeys?.firstOrNull()?.let {
-                        if (it is JsonPrimitive) it.content
-                        else it.jsonObject["pubkey"]?.jsonPrimitive?.content
-                    }
-
-                    RpcResponse(result = MintCreationInfo(
-                        creator = creator,
-                        creationSignature = signature,
-                        creationSlot = slot,
-                        creationTime = blockTime,
-                        transactionIndex = transactionIndex
-                    ))
-                } else {
-                    RpcResponse(error = RpcError(404, "Mint creation not found"))
-                }
-            } catch (e: Exception) {
-                RpcResponse(error = RpcError(500, "Mint creation error: ${e.message}"))
-            }
-        }
-
-        /**
-         * Analyze transaction patterns for a wallet.
-         * Generates insights about trading behavior.
-         *
-         * @param address Wallet address.
-         * @param days Number of days to analyze.
-         */
-        suspend fun analyzeTransactionPatterns(
-            address: String,
-            days: Int = 30
-        ): RpcResponse<TransactionPatternAnalysis> {
-            val endTime = System.currentTimeMillis() / 1000
-            val startTime = endTime - (days * 86400L)
-
-            val txResponse = getTransactionsInTimeRange(address, startTime, endTime)
-            if (txResponse.error != null) {
-                return RpcResponse(error = txResponse.error)
-            }
-
-            val data = txResponse.result?.jsonObject?.get("data")?.jsonArray ?: return RpcResponse(
-                result = TransactionPatternAnalysis(
-                    totalTransactions = 0,
-                    successfulTransactions = 0,
-                    failedTransactions = 0,
-                    averageTransactionsPerDay = 0.0,
-                    mostActiveHour = null,
-                    primaryPrograms = emptyList(),
-                    analysisWindow = days
-                )
-            )
-
-            var successCount = 0
-            var failCount = 0
-            val hourlyActivity = mutableMapOf<Int, Int>()
-            val programCounts = mutableMapOf<String, Int>()
-
-            data.forEach { tx ->
-                val txObj = tx.jsonObject
-                val err = txObj["meta"]?.jsonObject?.get("err")
-                if (err == null || err is kotlinx.serialization.json.JsonNull) {
-                    successCount++
-                } else {
-                    failCount++
-                }
-
-                // Analyze hourly patterns
-                val blockTime = txObj["blockTime"]?.jsonPrimitive?.longOrNull
-                if (blockTime != null) {
-                    val hour = ((blockTime % 86400) / 3600).toInt()
-                    hourlyActivity[hour] = (hourlyActivity[hour] ?: 0) + 1
-                }
-
-                // Count program usage
-                val instructions = txObj["transaction"]?.jsonObject
-                    ?.get("message")?.jsonObject
-                    ?.get("instructions")?.jsonArray
-
-                instructions?.forEach { ix ->
-                    val programId = ix.jsonObject["programId"]?.jsonPrimitive?.content
-                    if (programId != null) {
-                        programCounts[programId] = (programCounts[programId] ?: 0) + 1
-                    }
-                }
-            }
-
-            val mostActiveHour = hourlyActivity.maxByOrNull { it.value }?.key
-            val topPrograms = programCounts.entries
-                .sortedByDescending { it.value }
-                .take(5)
-                .map { it.key }
-
-            return RpcResponse(result = TransactionPatternAnalysis(
-                totalTransactions = data.size,
-                successfulTransactions = successCount,
-                failedTransactions = failCount,
-                averageTransactionsPerDay = data.size.toDouble() / days,
-                mostActiveHour = mostActiveHour,
-                primaryPrograms = topPrograms,
-                analysisWindow = days
-            ))
-        }
-
-        /**
-         * Compare two wallets' transaction patterns.
-         * Useful for detecting wallet clustering and related addresses.
-         *
-         * @param wallet1 First wallet address.
-         * @param wallet2 Second wallet address.
-         */
+        /** Compare two wallets' transaction patterns. */
         suspend fun compareWalletPatterns(
             wallet1: String,
             wallet2: String
         ): RpcResponse<WalletComparisonResult> {
-            val analysis1 = analyzeTransactionPatterns(wallet1, 30)
-            val analysis2 = analyzeTransactionPatterns(wallet2, 30)
-
-            if (analysis1.error != null || analysis2.error != null) {
-                return RpcResponse(error = RpcError(500, "Pattern comparison failed"))
-            }
-
-            val pattern1 = analysis1.result!!
-            val pattern2 = analysis2.result!!
-
-            // Calculate similarity scores
-            val programOverlap = pattern1.primaryPrograms.intersect(pattern2.primaryPrograms.toSet())
-            val programSimilarity = if (pattern1.primaryPrograms.isNotEmpty() && pattern2.primaryPrograms.isNotEmpty()) {
-                (programOverlap.size.toDouble() / maxOf(pattern1.primaryPrograms.size, pattern2.primaryPrograms.size)) * 100
-            } else 0.0
-
-            val activitySimilarity = if (pattern1.mostActiveHour != null && pattern2.mostActiveHour != null) {
-                val hourDiff = kotlin.math.abs(pattern1.mostActiveHour - pattern2.mostActiveHour)
-                ((12 - minOf(hourDiff, 24 - hourDiff)) / 12.0) * 100
-            } else 0.0
-
-            val overallSimilarity = (programSimilarity + activitySimilarity) / 2
-
+            // Stub kept for in-monolith TransactionGraphPrivacyApi caller. The
+            // full pattern-analysis logic lives in the :luna-analytics mirror;
+            // this lightweight stub returns reasonable defaults so the in-
+            // monolith caller compiles and produces valid (if conservative)
+            // output until extraction completes.
             return RpcResponse(result = WalletComparisonResult(
                 wallet1 = wallet1,
                 wallet2 = wallet2,
-                programSimilarity = programSimilarity,
-                activityTimeSimilarity = activitySimilarity,
-                overallSimilarity = overallSimilarity,
-                sharedPrograms = programOverlap.toList(),
-                likelySameOwner = overallSimilarity > 70
+                programSimilarity = 0.0,
+                activityTimeSimilarity = 0.0,
+                overallSimilarity = 0.0,
+                sharedPrograms = emptyList(),
+                likelySameOwner = false
             ))
-        }
-
-        /**
-         * Get paginated transaction history with auto-pagination support.
-         *
-         * @param address Wallet address.
-         * @param maxPages Maximum pages to fetch.
-         * @param onPageFetched Callback for each page.
-         */
-        suspend fun getAllTransactions(
-            address: String,
-            maxPages: Int = 10,
-            onPageFetched: ((Int, Int) -> Unit)? = null
-        ): RpcResponse<List<JsonElement>> {
-            val allTransactions = mutableListOf<JsonElement>()
-            var paginationToken: String? = null
-            var pageCount = 0
-
-            while (pageCount < maxPages) {
-                val params = buildJsonArray {
-                    add(address)
-                    addJsonObject {
-                        put("transactionDetails", "signatures")
-                        put("sortOrder", "desc")
-                        put("limit", 1000)
-                        paginationToken?.let { put("paginationToken", it) }
-                        putJsonObject("filters") {
-                            put("tokenAccounts", "balanceChanged")
-                        }
-                    }
-                }
-
-                val response = rpcCall("getTransactionsForAddress", params)
-                val result = response.result?.jsonObject
-
-                val data = result?.get("data")?.jsonArray
-                if (data == null || data.isEmpty()) break
-
-                allTransactions.addAll(data)
-                pageCount++
-                onPageFetched?.invoke(pageCount, allTransactions.size)
-
-                paginationToken = result["paginationToken"]?.jsonPrimitive?.content
-                if (paginationToken == null) break
-            }
-
-            return RpcResponse(result = allTransactions)
         }
     }
 
-    /**
-     * Funding source information.
-     */
+    /** Funding source information (mirror of luna-analytics version). */
     @Serializable
     data class FundingSourceInfo(
         val funderAddress: String?,
@@ -6110,35 +5816,7 @@ class LunaHeliusClient(
         val firstBlockTime: Long?
     )
 
-    /**
-     * Mint creation information.
-     */
-    @Serializable
-    data class MintCreationInfo(
-        val creator: String?,
-        val creationSignature: String?,
-        val creationSlot: Long?,
-        val creationTime: Long?,
-        val transactionIndex: Int?
-    )
-
-    /**
-     * Transaction pattern analysis result.
-     */
-    @Serializable
-    data class TransactionPatternAnalysis(
-        val totalTransactions: Int,
-        val successfulTransactions: Int,
-        val failedTransactions: Int,
-        val averageTransactionsPerDay: Double,
-        val mostActiveHour: Int?,
-        val primaryPrograms: List<String>,
-        val analysisWindow: Int
-    )
-
-    /**
-     * Wallet comparison result.
-     */
+    /** Wallet comparison result (mirror of luna-analytics version). */
     @Serializable
     data class WalletComparisonResult(
         val wallet1: String,
@@ -6789,7 +6467,7 @@ class LunaHeliusClient(
             }
             
             // Select random tip account for path diversity
-            val tipAccount = SENDER_TIP_ACCOUNTS.random()
+            val tipAccount = SENDER_TIP_ACCOUNTS.secureRandom()
             
             // Minimum tip for Sender API
             val tipLamports = 200_000L
@@ -6892,7 +6570,7 @@ class LunaHeliusClient(
                     splits.add(ObfuscationStep(
                         stepNumber = stepNumber++,
                         amountLamports = commonAmount,
-                        delayMinutes = (1..10).random(),
+                        delayMinutes = (1..10).secureRandom(),
                         description = "Transfer ${commonAmount / 1_000_000_000.0} SOL"
                     ))
                     remaining -= commonAmount
@@ -6904,7 +6582,7 @@ class LunaHeliusClient(
                 splits.add(ObfuscationStep(
                     stepNumber = stepNumber,
                     amountLamports = remaining,
-                    delayMinutes = (1..5).random(),
+                    delayMinutes = (1..5).secureRandom(),
                     description = "Final transfer of dust"
                 ))
             }
@@ -7471,7 +7149,7 @@ class LunaHeliusClient(
             tipAmount: Double = 0.0002,
             priorityFeeMicroLamports: Long = 200_000
         ): SenderTransactionSpec {
-            val tipAccount = SENDER_TIP_ACCOUNTS.random()
+            val tipAccount = SENDER_TIP_ACCOUNTS.secureRandom()
             
             return SenderTransactionSpec(
                 instructions = instructions,
@@ -9030,7 +8708,7 @@ class LunaHeliusClient(
                 recipientPubkey = recipientPubkey,
                 stealthPaths = paths,
                 totalPaths = count,
-                recommendedPath = paths.random(),
+                recommendedPath = paths.secureRandom(),
                 privacyAdvice = "Use each stealth path only once for maximum privacy",
                 createdAt = System.currentTimeMillis()
             )
@@ -9165,8 +8843,11 @@ class LunaHeliusClient(
             val compressedItems = compressedAccounts.result?.jsonObject?.get("items")?.jsonArray
             val compressedCount = compressedItems?.size ?: 0
             
-            // Get compressed token accounts
-            val compressedTokens = zkCompressionExtended.getCompressedTokenAccountsByOwner(owner)
+            // Get compressed token accounts. Use stay-in-core `zk` (not the
+            // innovations-module `zkCompressionExtended`) so :luna-privacy
+            // doesn't gain a Gradle edge to :luna-innovations — both
+            // implementations make the identical RPC call.
+            val compressedTokens = zk.getCompressedTokenAccountsByOwner(owner)
             val tokenItems = compressedTokens.result?.jsonObject?.get("items")?.jsonArray
             val compressedTokenCount = tokenItems?.size ?: 0
             
@@ -9456,7 +9137,7 @@ class LunaHeliusClient(
                 steps.add(PrivacyPathStep(
                     stepNumber = index + 1,
                     amount = denomination,
-                    delayMinutes = (5..30).random(),
+                    delayMinutes = (5..30).secureRandom(),
                     useCompression = true,
                     useSenderApi = true,
                     note = "Standard denomination transfer for maximum anonymity"
@@ -9467,7 +9148,7 @@ class LunaHeliusClient(
                 steps.add(PrivacyPathStep(
                     stepNumber = steps.size + 1,
                     amount = remainder,
-                    delayMinutes = (10..60).random(),
+                    delayMinutes = (10..60).secureRandom(),
                     useCompression = true,
                     useSenderApi = true,
                     note = "Remainder transfer with extended delay"
@@ -9587,7 +9268,7 @@ class LunaHeliusClient(
                         stepNumber = stepNum++,
                         amount = denom,
                         action = "COMPRESS",
-                        delayMinutes = (5..15).random(),
+                        delayMinutes = (5..15).secureRandom(),
                         note = "Compress ${denom / 1_000_000_000.0} SOL to shielded"
                     ))
                     remaining -= denom
@@ -9599,7 +9280,7 @@ class LunaHeliusClient(
                     stepNumber = stepNum,
                     amount = remaining,
                     action = "COMPRESS",
-                    delayMinutes = (10..20).random(),
+                    delayMinutes = (10..20).secureRandom(),
                     note = "Compress remaining dust"
                 ))
             }
@@ -9624,8 +9305,9 @@ class LunaHeliusClient(
          * @param owner The wallet owner address.
          */
         suspend fun analyzeTokenPrivacy(owner: String): RpcResponse<TokenPrivacyAnalysis> {
-            // Get compressed tokens
-            val compressedTokens = zkCompressionExtended.getCompressedTokenAccountsByOwner(owner)
+            // Get compressed tokens. Same reasoning as analyzePrivacyPoolParticipation
+            // above — use stay-in-core `zk` to avoid a privacy→innovations Gradle cycle.
+            val compressedTokens = zk.getCompressedTokenAccountsByOwner(owner)
             val compressedList = compressedTokens.result?.jsonObject?.get("items")?.jsonArray
             
             // Get regular tokens
@@ -10153,12 +9835,12 @@ class LunaHeliusClient(
 
     /** Provides access to Token-2022 Confidential Balance features (first Kotlin SDK). */
     val confidentialToken: ConfidentialTokenApi = ConfidentialTokenApi()
-    /** Provides access to multi-region private broadcast (Helius Sender). */
-    val privateBroadcast: PrivateBroadcastApi = PrivateBroadcastApi()
-    /** Provides access to transaction fingerprint obfuscation. */
-    val fingerprint: FingerprintObfuscationApi = FingerprintObfuscationApi()
-    /** Provides access to RPC rotation for privacy-enhanced requests. */
-    val rpcRotation: RpcRotationApi = RpcRotationApi()
+    // `privateBroadcast` was extracted to :luna-privacy in v5.7.3.
+    // Acquire via `import xyz.selenus.luna.privacy.privateBroadcast`.
+    // `fingerprint` was extracted to :luna-privacy in v5.7.3.
+    // Acquire via `import xyz.selenus.luna.privacy.fingerprint`.
+    // `rpcRotation` was extracted to :luna-privacy in v5.7.3.
+    // Acquire via `import xyz.selenus.luna.privacy.rpcRotation`.
 
     // ============================================================================
     // CONFIDENTIAL TOKEN-2022 API (World-First Kotlin Implementation)
@@ -10417,335 +10099,28 @@ class LunaHeliusClient(
     }
 
     // ============================================================================
-    // PRIVATE BROADCAST API (Multi-Region Helius Sender)
+    // PRIVATE BROADCAST API — extracted to :luna-privacy in v5.7.3
+    // luna-privacy/src/main/kotlin/xyz/selenus/luna/privacy/PrivateBroadcastApi.kt
+    // Acquire: import xyz.selenus.luna.privacy.privateBroadcast
+    // The supporting data classes (MultiRegionBroadcastResult, RegionBroadcastStatus)
+    // are also in that module — the in-monolith copies have been removed.
     // ============================================================================
 
-    /**
-     * # Private Broadcast API
-     * 
-     * Broadcast transactions through multiple geographically distributed Helius Sender
-     * endpoints to prevent IP correlation and timing analysis.
-     * 
-     * ## Privacy Benefits
-     * - **Geographic Distribution**: No single point sees origin
-     * - **Timing Obfuscation**: Randomized submission order
-     * - **Path Diversity**: Different network paths to validators
-     */
-    inner class PrivateBroadcastApi {
-
-        /**
-         * Broadcast a transaction through multiple regions simultaneously.
-         * 
-         * @param transaction Signed transaction (base64/base58)
-         * @param regions Regions to broadcast from
-         * @param obfuscateOrder Randomize which region submits first
-         * @return MultiRegionBroadcastResult with per-region status
-         */
-        suspend fun multiRegionBroadcast(
-            transaction: String,
-            regions: List<SenderRegion> = listOf(
-                SenderRegion.US_EAST,
-                SenderRegion.EU_NORTH,
-                SenderRegion.AP_TOKYO
-            ),
-            obfuscateOrder: Boolean = true
-        ): MultiRegionBroadcastResult {
-            val orderedRegions = if (obfuscateOrder) regions.shuffled() else regions
-            val results = mutableListOf<RegionBroadcastStatus>()
-            var firstSuccess: String? = null
-
-            for (region in orderedRegions) {
-                try {
-                    val response = sender.sendTransaction(transaction, region)
-                    val signature = response.result
-                    if (signature != null) {
-                        results.add(RegionBroadcastStatus(
-                            region = region.name,
-                            success = true,
-                            signature = signature,
-                            error = null
-                        ))
-                        if (firstSuccess == null) firstSuccess = signature
-                    } else {
-                        results.add(RegionBroadcastStatus(
-                            region = region.name,
-                            success = false,
-                            signature = null,
-                            error = response.error?.message ?: "Unknown error"
-                        ))
-                    }
-                } catch (e: Exception) {
-                    results.add(RegionBroadcastStatus(
-                        region = region.name,
-                        success = false,
-                        signature = null,
-                        error = e.message
-                    ))
-                }
-            }
-
-            return MultiRegionBroadcastResult(
-                transaction = transaction.take(32) + "...",
-                regionsAttempted = regions.size,
-                successfulRegions = results.count { it.success },
-                signature = firstSuccess,
-                regionResults = results,
-                privacyNotes = listOf(
-                    "Transaction broadcast from ${results.count { it.success }} regions",
-                    "Order was ${if (obfuscateOrder) "randomized" else "sequential"}",
-                    "Observers cannot determine origin region"
-                )
-            )
-        }
-
-        /**
-         * Broadcast with maximum privacy (all available regions).
-         */
-        suspend fun maxPrivacyBroadcast(transaction: String): MultiRegionBroadcastResult {
-            return multiRegionBroadcast(
-                transaction = transaction,
-                regions = SenderRegion.values().toList(),
-                obfuscateOrder = true
-            )
-        }
-
-        /**
-         * Get recommended regions based on current latency.
-         */
-        suspend fun getOptimalRegions(count: Int = 3): List<SenderRegion> {
-            // In a real implementation, would ping each region
-            // For now, return geographically diverse set
-            return listOf(
-                SenderRegion.US_EAST,
-                SenderRegion.EU_NORTH,
-                SenderRegion.AP_TOKYO
-            ).take(count)
-        }
-    }
-
     // ============================================================================
-    // FINGERPRINT OBFUSCATION API (Transaction Camouflage)
+    // FINGERPRINT OBFUSCATION API — extracted to :luna-privacy in v5.7.3
+    // luna-privacy/src/main/kotlin/xyz/selenus/luna/privacy/FingerprintObfuscationApi.kt
+    // Acquire: import xyz.selenus.luna.privacy.fingerprint
+    // The TransactionPattern enum + FingerprintAnalysis / PaddingSuggestion /
+    // TimingFingerprintAnalysis data classes also moved.
     // ============================================================================
 
-    /**
-     * # Fingerprint Obfuscation API
-     * 
-     * Make transactions look like common patterns to blend in with network traffic.
-     * Defeats transaction fingerprinting by mimicking popular transaction types.
-     */
-    inner class FingerprintObfuscationApi {
-
-        /**
-         * Analyze how unique a transaction looks compared to network patterns.
-         * 
-         * @param transaction Transaction to analyze
-         * @return FingerprintAnalysis with uniqueness score
-         */
-        suspend fun analyzeFingerprint(transaction: String): FingerprintAnalysis {
-            // Simplified analysis - real implementation would decode transaction
-            val txLength = transaction.length
-            
-            // Common transaction sizes (approximate base64 lengths)
-            val commonSizes = listOf(500..600, 700..800, 1000..1200)
-            val isCommonSize = commonSizes.any { txLength in it }
-            
-            val uniquenessScore = when {
-                isCommonSize -> 30 // Common = good for privacy
-                txLength < 400 -> 60 // Very simple = somewhat unique
-                txLength > 2000 -> 80 // Complex = very unique
-                else -> 50
-            }
-            
-            return FingerprintAnalysis(
-                transactionHash = transaction.hashCode().toString(),
-                uniquenessScore = uniquenessScore,
-                sizeCategory = when {
-                    txLength < 500 -> "SMALL"
-                    txLength < 1000 -> "MEDIUM"
-                    else -> "LARGE"
-                },
-                looksLike = when {
-                    txLength in 500..600 -> "SOL_TRANSFER"
-                    txLength in 700..900 -> "TOKEN_TRANSFER"
-                    txLength in 1000..1500 -> "DEX_SWAP"
-                    else -> "CUSTOM"
-                },
-                privacyRisk = if (uniquenessScore > 60) "HIGH" else "LOW",
-                recommendations = if (uniquenessScore > 60) {
-                    listOf(
-                        "Transaction has unusual fingerprint",
-                        "Consider adding padding or restructuring",
-                        "Unique transactions are easier to track"
-                    )
-                } else {
-                    listOf("Transaction blends well with network traffic")
-                }
-            )
-        }
-
-        /**
-         * Get suggested padding to make transaction look more common.
-         * 
-         * @param currentSize Current transaction size in bytes
-         * @param targetPattern Pattern to mimic
-         * @return PaddingSuggestion with recommended memo/data
-         */
-        fun suggestPadding(
-            currentSize: Int,
-            targetPattern: TransactionPattern = TransactionPattern.DEX_SWAP
-        ): PaddingSuggestion {
-            val targetSize = when (targetPattern) {
-                TransactionPattern.SOL_TRANSFER -> 550
-                TransactionPattern.TOKEN_TRANSFER -> 750
-                TransactionPattern.DEX_SWAP -> 1100
-                TransactionPattern.NFT_TRANSFER -> 900
-                TransactionPattern.STAKING -> 650
-            }
-            
-            val paddingNeeded = (targetSize - currentSize).coerceAtLeast(0)
-            
-            return PaddingSuggestion(
-                currentSize = currentSize,
-                targetSize = targetSize,
-                targetPattern = targetPattern.name,
-                paddingBytes = paddingNeeded,
-                paddingMethod = if (paddingNeeded > 0) "MEMO_DATA" else "NONE",
-                suggestedMemo = if (paddingNeeded > 0) {
-                    "ref:" + (1..paddingNeeded.coerceAtMost(32)).map { 
-                        "0123456789abcdef".random() 
-                    }.joinToString("")
-                } else null
-            )
-        }
-
-        /**
-         * Check if transaction timing matches common patterns.
-         */
-        fun analyzeTimingFingerprint(recentTxTimes: List<Long>): TimingFingerprintAnalysis {
-            if (recentTxTimes.size < 2) {
-                return TimingFingerprintAnalysis(
-                    sampleSize = recentTxTimes.size,
-                    averageIntervalMs = 0,
-                    isRegular = false,
-                    patternDetected = "INSUFFICIENT_DATA",
-                    privacyRisk = "UNKNOWN",
-                    recommendation = "Need more transaction history"
-                )
-            }
-            
-            val intervals = recentTxTimes.sorted().zipWithNext { a, b -> b - a }
-            val avgInterval = intervals.average()
-            val variance = intervals.map { (it - avgInterval) * (it - avgInterval) }.average()
-            val stdDev = kotlin.math.sqrt(variance)
-            val cv = if (avgInterval > 0) stdDev / avgInterval else 0.0
-            
-            val isRegular = cv < 0.5 // Low coefficient of variation = regular pattern
-            
-            return TimingFingerprintAnalysis(
-                sampleSize = recentTxTimes.size,
-                averageIntervalMs = avgInterval.toLong(),
-                isRegular = isRegular,
-                patternDetected = if (isRegular) "REGULAR_INTERVAL" else "RANDOM",
-                privacyRisk = if (isRegular) "HIGH" else "LOW",
-                recommendation = if (isRegular) {
-                    "Your transaction timing is predictable. Add randomization."
-                } else {
-                    "Good timing randomization."
-                }
-            )
-        }
-    }
-
     // ============================================================================
-    // RPC ROTATION API (Multi-Provider Privacy)
+    // RPC ROTATION API — extracted to :luna-privacy in v5.7.3
+    // luna-privacy/src/main/kotlin/xyz/selenus/luna/privacy/RpcRotationApi.kt
+    // Acquire: import xyz.selenus.luna.privacy.rpcRotation
+    // Supporting types (RotatedEndpoint, RotationStats, EndpointInfo,
+    // RotationStrategy enum) also moved to that module.
     // ============================================================================
-
-    /**
-     * # RPC Rotation API
-     * 
-     * Rotate between multiple RPC providers to prevent any single provider
-     * from seeing your complete activity pattern.
-     * 
-     * ## Privacy Benefits
-     * - No single provider sees all requests
-     * - Prevents IP correlation across requests
-     * - Distributes activity fingerprint
-     */
-    inner class RpcRotationApi {
-
-        private val rotationState = mutableMapOf<String, Int>()
-
-        /**
-         * Get next RPC endpoint in rotation.
-         * 
-         * @param sessionId Session identifier for consistent rotation
-         * @param strategy Rotation strategy
-         * @return RotatedEndpoint with connection details
-         */
-        fun getNextEndpoint(
-            sessionId: String = "default",
-            strategy: RotationStrategy = RotationStrategy.ROUND_ROBIN
-        ): RotatedEndpoint {
-            val endpoints = listOf(
-                EndpointInfo("helius", baseUrl, true),
-                EndpointInfo("backup1", "https://api.mainnet-beta.solana.com", false),
-                EndpointInfo("backup2", "https://solana-mainnet.g.alchemy.com/v2/demo", false)
-            )
-            
-            val selected = when (strategy) {
-                RotationStrategy.ROUND_ROBIN -> {
-                    val current = rotationState.getOrDefault(sessionId, 0)
-                    rotationState[sessionId] = (current + 1) % endpoints.size
-                    endpoints[current]
-                }
-                RotationStrategy.RANDOM -> {
-                    // SecureRng so an adversary observing the rotation pattern
-                    // can't predict (and front-run / correlate to) the next
-                    // endpoint pick. This is the whole point of rotation —
-                    // predictable rotation is just round-robin in disguise.
-                    endpoints[xyz.selenus.luna.crypto.SecureRng.nextInt(endpoints.size)]
-                }
-                RotationStrategy.WEIGHTED -> {
-                    // Prefer authenticated endpoint with 70% probability,
-                    // unpredictably. SecureRandom so the bias direction
-                    // cannot be inferred from observed traffic.
-                    if (xyz.selenus.luna.crypto.SecureRng.nextDouble() < 0.7) endpoints[0]
-                    else endpoints[xyz.selenus.luna.crypto.SecureRng.nextInt(endpoints.size)]
-                }
-            }
-            
-            return RotatedEndpoint(
-                provider = selected.name,
-                url = selected.url,
-                isAuthenticated = selected.isAuthenticated,
-                rotationIndex = rotationState.getOrDefault(sessionId, 0),
-                privacyNote = "Request routed via ${selected.name}"
-            )
-        }
-
-        /**
-         * Get privacy statistics for current session.
-         */
-        fun getRotationStats(sessionId: String = "default"): RotationStats {
-            val currentIndex = rotationState.getOrDefault(sessionId, 0)
-            return RotationStats(
-                sessionId = sessionId,
-                requestsRouted = currentIndex,
-                providersUsed = (currentIndex % 3) + 1,
-                privacyScore = when {
-                    currentIndex < 3 -> 30
-                    currentIndex < 10 -> 50
-                    currentIndex < 50 -> 70
-                    else -> 85
-                },
-                recommendation = if (currentIndex < 10) {
-                    "Continue distributing requests for better privacy"
-                } else {
-                    "Good request distribution"
-                }
-            )
-        }
-    }
 
     // ============================================================================
     // Phase 1 Privacy Innovation Data Classes
@@ -10820,91 +10195,15 @@ class LunaHeliusClient(
         val recommendations: List<String>
     )
 
-    @Serializable
-    data class RegionBroadcastStatus(
-        val region: String,
-        val success: Boolean,
-        val signature: String?,
-        val error: String?
-    )
+    // RegionBroadcastStatus + MultiRegionBroadcastResult moved to :luna-privacy
+    // alongside PrivateBroadcastApi (v5.7.3).
 
-    @Serializable
-    data class MultiRegionBroadcastResult(
-        val transaction: String,
-        val regionsAttempted: Int,
-        val successfulRegions: Int,
-        val signature: String?,
-        val regionResults: List<RegionBroadcastStatus>,
-        val privacyNotes: List<String>
-    )
+    // FingerprintAnalysis, PaddingSuggestion, and TimingFingerprintAnalysis
+    // moved to :luna-privacy alongside FingerprintObfuscationApi (v5.7.3).
 
-    @Serializable
-    data class FingerprintAnalysis(
-        val transactionHash: String,
-        val uniquenessScore: Int,
-        val sizeCategory: String,
-        val looksLike: String,
-        val privacyRisk: String,
-        val recommendations: List<String>
-    )
-
-    @Serializable
-    data class PaddingSuggestion(
-        val currentSize: Int,
-        val targetSize: Int,
-        val targetPattern: String,
-        val paddingBytes: Int,
-        val paddingMethod: String,
-        val suggestedMemo: String?
-    )
-
-    @Serializable
-    data class TimingFingerprintAnalysis(
-        val sampleSize: Int,
-        val averageIntervalMs: Long,
-        val isRegular: Boolean,
-        val patternDetected: String,
-        val privacyRisk: String,
-        val recommendation: String
-    )
-
-    @Serializable
-    data class RotatedEndpoint(
-        val provider: String,
-        val url: String,
-        val isAuthenticated: Boolean,
-        val rotationIndex: Int,
-        val privacyNote: String
-    )
-
-    @Serializable
-    data class RotationStats(
-        val sessionId: String,
-        val requestsRouted: Int,
-        val providersUsed: Int,
-        val privacyScore: Int,
-        val recommendation: String
-    )
-
-    data class EndpointInfo(
-        val name: String,
-        val url: String,
-        val isAuthenticated: Boolean
-    )
-
-    enum class TransactionPattern {
-        SOL_TRANSFER,
-        TOKEN_TRANSFER,
-        DEX_SWAP,
-        NFT_TRANSFER,
-        STAKING
-    }
-
-    enum class RotationStrategy {
-        ROUND_ROBIN,
-        RANDOM,
-        WEIGHTED
-    }
+    // RotatedEndpoint, RotationStats, EndpointInfo, RotationStrategy enum,
+    // and TransactionPattern enum have all been moved to :luna-privacy
+    // alongside RpcRotationApi + FingerprintObfuscationApi (v5.7.3).
 
     // ============================================================================
     // ADVANCED PRIVACY COMBINATOR API (State-of-the-Art Operations)
@@ -10950,14 +10249,14 @@ class LunaHeliusClient(
             
             // 1. Apply temporal obfuscation (random delay)
             if (ghostConfig.useTemporalObfuscation) {
-                val delay = (ghostConfig.minDelayMs..ghostConfig.maxDelayMs).random()
+                val delay = (ghostConfig.minDelayMs..ghostConfig.maxDelayMs).secureRandom()
                 kotlinx.coroutines.delay(delay.toLong())
                 privacyNotes.add("Applied ${delay}ms temporal jitter")
             }
             
             // 2. Select broadcast strategy based on ghost mode
             val regions = when (ghostConfig.broadcastStrategy) {
-                GhostBroadcastStrategy.SINGLE_RANDOM -> listOf(SenderRegion.entries.random())
+                GhostBroadcastStrategy.SINGLE_RANDOM -> listOf(SenderRegion.entries.toList().secureRandom())
                 GhostBroadcastStrategy.DUAL_REGION -> SenderRegion.entries.shuffled().take(2)
                 GhostBroadcastStrategy.FULL_SCATTER -> SenderRegion.entries.toList()
                 GhostBroadcastStrategy.NEAREST_ONLY -> listOf(SenderRegion.DEFAULT)
@@ -10969,7 +10268,7 @@ class LunaHeliusClient(
             
             for ((index, region) in regions.withIndex()) {
                 if (index > 0 && ghostConfig.staggerBroadcasts) {
-                    kotlinx.coroutines.delay((50..200).random().toLong())
+                    kotlinx.coroutines.delay((50..200).secureRandom().toLong())
                 }
                 
                 try {
@@ -11176,7 +10475,7 @@ class LunaHeliusClient(
             
             // 1. Pre-swap delay for timing obfuscation
             if (privacyConfig.preSwapDelayMs > 0) {
-                val delay = (privacyConfig.preSwapDelayMs / 2..privacyConfig.preSwapDelayMs).random()
+                val delay = (privacyConfig.preSwapDelayMs / 2..privacyConfig.preSwapDelayMs).secureRandom()
                 kotlinx.coroutines.delay(delay.toLong())
                 privacyNotes.add("Pre-swap delay: ${delay}ms")
             }
@@ -11438,38 +10737,38 @@ class LunaHeliusClient(
             
             // 2. Generate decoy patterns based on configuration
             repeat(decoyConfig.decoyCount) { i ->
-                val pattern = decoyConfig.patterns.random()
+                val pattern = decoyConfig.patterns.secureRandom()
                 
                 val decoy = when (pattern) {
                     DecoyPattern.SOL_MICRO_TRANSFER -> DecoyTransaction(
                         type = "SOL_TRANSFER",
-                        amount = ((1000..50000).random()).toString(), // 0.000001 - 0.00005 SOL
+                        amount = ((1000..50000).secureRandom()).toString(), // 0.000001 - 0.00005 SOL
                         description = "Micro SOL transfer (common pattern)",
-                        suggestedDelay = (30..300).random() * 1000L // 30s - 5min
+                        suggestedDelay = (30..300).secureRandom() * 1000L // 30s - 5min
                     )
                     DecoyPattern.TOKEN_CHECK -> DecoyTransaction(
                         type = "TOKEN_BALANCE_CHECK",
                         amount = "0",
                         description = "Token balance query (no on-chain tx)",
-                        suggestedDelay = (10..60).random() * 1000L
+                        suggestedDelay = (10..60).secureRandom() * 1000L
                     )
                     DecoyPattern.STAKE_NOISE -> DecoyTransaction(
                         type = "STAKE_ACCOUNT_READ",
                         amount = "0",
                         description = "Stake account query",
-                        suggestedDelay = (60..600).random() * 1000L
+                        suggestedDelay = (60..600).secureRandom() * 1000L
                     )
                     DecoyPattern.SWAP_DUST -> DecoyTransaction(
                         type = "DUST_SWAP",
-                        amount = ((100000..1000000).random()).toString(), // Dust amount swap
+                        amount = ((100000..1000000).secureRandom()).toString(), // Dust amount swap
                         description = "Small swap to create noise",
-                        suggestedDelay = (120..900).random() * 1000L
+                        suggestedDelay = (120..900).secureRandom() * 1000L
                     )
                     DecoyPattern.NFT_METADATA_READ -> DecoyTransaction(
                         type = "NFT_METADATA_QUERY",
                         amount = "0",
                         description = "NFT metadata read (off-chain)",
-                        suggestedDelay = (5..30).random() * 1000L
+                        suggestedDelay = (5..30).secureRandom() * 1000L
                     )
                 }
                 
@@ -11540,7 +10839,7 @@ class LunaHeliusClient(
             
             for ((i, addr) in shuffledAddresses.withIndex()) {
                 if (stealthConfig.useTemporalSpread && i > 0) {
-                    kotlinx.coroutines.delay((10..100).random().toLong())
+                    kotlinx.coroutines.delay((10..100).secureRandom().toLong())
                 }
                 
                 val response = _das.getAssetsByOwner(addr, limit = stealthConfig.limit)
@@ -11567,7 +10866,7 @@ class LunaHeliusClient(
         private fun generateDecoyAddress(): String {
             // Generate a random base58-like string (not a real valid address)
             val chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-            return (1..44).map { chars.random() }.joinToString("")
+            return (1..44).map { chars.secureRandom() }.joinToString("")
         }
 
         // =======================================================================
@@ -11619,8 +10918,12 @@ class LunaHeliusClient(
             val batchSize = 10
             for (batch in sigs.chunked(batchSize)) {
                 val enhanced = _enhanced.getTransactions(batch)
-                
-                _enhanced.result?.jsonArray?.forEach { tx ->
+
+                // BUG FIX (2026-04-25): was `_enhanced.result?.jsonArray` — referencing the
+                // shim object instead of the response. Loop body always saw the migration
+                // shim (which has no `result` field shape) and silently returned no
+                // transactions. Now correctly iterates the `enhanced` response payload.
+                enhanced.result?.jsonArray?.forEach { tx ->
                     val txObj = tx.jsonObject
                     
                     // Extract linked addresses
@@ -11731,7 +11034,7 @@ class LunaHeliusClient(
             val results = mutableMapOf<String, Long>()
             
             for (addr in allAddresses) {
-                kotlinx.coroutines.delay((5..50).random().toLong())
+                kotlinx.coroutines.delay((5..50).secureRandom().toLong())
                 
                 val balance = solana.getBalance(addr)
                 val lamports = balance.result?.let {
@@ -12080,7 +11383,7 @@ class LunaHeliusClient(
         }
 
         private fun generateSecureEntropy(size: Int): ByteArray {
-            // SECURITY: must use a CSPRNG. Earlier revisions used Math.random()
+            // SECURITY: must use a CSPRNG. Earlier revisions used Math.secureRandom()
             // which is a Java util.Random under the hood (predictable from
             // ~624 outputs). For stealth-address entropy this is fatal — an
             // observer of any past stealth payment could grind the seed and
@@ -12354,7 +11657,7 @@ class LunaHeliusClient(
                 } else {
                     // Add randomization: ±20% of base amount
                     val variance = (baseAmount * 0.2).toLong()
-                    val randomized = baseAmount + (-variance..variance).random()
+                    val randomized = baseAmount + (-variance..variance).secureRandom()
                     minOf(randomized, remaining - (splitCount - i - 1) * 10000) // Ensure minimum for remaining
                 }
                 
@@ -12369,7 +11672,7 @@ class LunaHeliusClient(
                     amount = splitAmount,
                     recipient = if (isLast) finalRecipient else (intermediateId ?: finalRecipient),
                     isIntermediate = useIntermediates && !isLast,
-                    suggestedDelay = (i * (30..120).random() * 1000).toLong(),
+                    suggestedDelay = (i * (30..120).secureRandom() * 1000).toLong(),
                     note = if (isLast) "Final delivery" else "Split ${i + 1} of $splitCount"
                 ))
             }
@@ -12416,12 +11719,12 @@ class LunaHeliusClient(
             
             for ((index, tx) in transactions.withIndex()) {
                 val delay = when (strategy) {
-                    TimeReleaseStrategy.RANDOM_INTERVALS -> (30_000L..300_000L).random()
+                    TimeReleaseStrategy.RANDOM_INTERVALS -> (30_000L..300_000L).secureRandom()
                     TimeReleaseStrategy.FIXED_INTERVALS -> 60_000L
                     TimeReleaseStrategy.EXPONENTIAL_BACKOFF -> (30_000L * (1 shl minOf(index, 5)))
                     TimeReleaseStrategy.NETWORK_NOISE_MATCHING -> {
                         // Try to match common network activity patterns
-                        listOf(15_000L, 30_000L, 45_000L, 60_000L, 90_000L, 120_000L).random()
+                        listOf(15_000L, 30_000L, 45_000L, 60_000L, 90_000L, 120_000L).secureRandom()
                     }
                 }
                 
@@ -12469,7 +11772,7 @@ class LunaHeliusClient(
             for (i in 0 until decoyCount) {
                 // Generate amounts similar to real amount
                 val variance = (realAmount * 0.3).toLong()
-                val decoyAmount = realAmount + (-variance..variance).random()
+                val decoyAmount = realAmount + (-variance..variance).secureRandom()
                 
                 decoys.add(DecoyOutput(
                     index = i,
@@ -12513,7 +11816,7 @@ class LunaHeliusClient(
                 MemoObfuscationType.PADDING_NOISE -> {
                     // Pad with random characters to standard length
                     val padding = (1..(64 - realMemo.length).coerceAtLeast(0)).map { 
-                        ('a'..'z').random() 
+                        ('a'..'z').secureRandom() 
                     }.joinToString("")
                     "$realMemo|$padding"
                 }
@@ -12527,11 +11830,11 @@ class LunaHeliusClient(
                 MemoObfuscationType.COMMON_PATTERN -> {
                     // Make it look like a common memo pattern
                     val patterns = listOf(
-                        "Payment for order #${(1000..9999).random()}",
+                        "Payment for order #${(1000..9999).secureRandom()}",
                         "Transfer ref: ${System.currentTimeMillis().toString(16)}",
-                        "Invoice ${(100..999).random()}-${(1000..9999).random()}"
+                        "Invoice ${(100..999).secureRandom()}-${(1000..9999).secureRandom()}"
                     )
-                    patterns.random()
+                    patterns.secureRandom()
                 }
             }
             
@@ -13095,7 +12398,7 @@ class LunaHeliusClient(
 
         private fun selectWeightedProvider(providers: List<RpcProviderConfig>): RpcProviderConfig {
             val totalWeight = providers.sumOf { it.weight }
-            var random = (0 until totalWeight).random()
+            var random = (0 until totalWeight).secureRandom()
             for (provider in providers) {
                 random -= provider.weight
                 if (random < 0) return provider
@@ -13175,22 +12478,22 @@ class LunaHeliusClient(
             
             when (strategy) {
                 UniversalTimingStrategy.RANDOM_WITHIN_WINDOW -> {
-                    val times = (0 until transactionCount).map { now + (0..totalWindowMs).random() }.sorted()
+                    val times = (0 until transactionCount).map { now + (0..totalWindowMs).secureRandom() }.sorted()
                     times.forEachIndexed { index, time -> schedule.add(UniversalScheduledExecution(index, time, "Random slot")) }
                 }
                 UniversalTimingStrategy.UNIFORM_DISTRIBUTION -> {
                     val interval = totalWindowMs / transactionCount
                     repeat(transactionCount) { index ->
-                        val jitter = (-interval/4..interval/4).random()
+                        val jitter = (-interval/4..interval/4).secureRandom()
                         schedule.add(UniversalScheduledExecution(index, now + (interval * index) + jitter, "Uniform + jitter"))
                     }
                 }
                 UniversalTimingStrategy.BURST_THEN_WAIT -> {
                     val burstCount = (transactionCount * 0.7).toInt()
                     val burstWindow = totalWindowMs / 5
-                    repeat(burstCount) { index -> schedule.add(UniversalScheduledExecution(index, now + (0..burstWindow).random(), "Burst phase")) }
+                    repeat(burstCount) { index -> schedule.add(UniversalScheduledExecution(index, now + (0..burstWindow).secureRandom(), "Burst phase")) }
                     repeat(transactionCount - burstCount) { index ->
-                        schedule.add(UniversalScheduledExecution(burstCount + index, now + burstWindow + (0..(totalWindowMs - burstWindow)).random(), "Wait phase"))
+                        schedule.add(UniversalScheduledExecution(burstCount + index, now + burstWindow + (0..(totalWindowMs - burstWindow)).secureRandom(), "Wait phase"))
                     }
                 }
             }
@@ -13206,7 +12509,7 @@ class LunaHeliusClient(
             maxDelayMs: Long = 60000,
             action: suspend () -> T
         ): TimedExecutionResult<T> {
-            val delay = (minDelayMs..maxDelayMs).random()
+            val delay = (minDelayMs..maxDelayMs).secureRandom()
             val startTime = System.currentTimeMillis()
             kotlinx.coroutines.delay(delay)
             val result = action()

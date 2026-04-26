@@ -80,6 +80,43 @@ internal object Ed25519Derive {
 
     // ── Public entry point ─────────────────────────────────────────────
 
+    /** Group order L of the Ed25519 prime-order subgroup. Exposed for scalar mod L work. */
+    internal val ORDER_L: BigInteger = BigInteger("7237005577332262213973186563042994240857116359379907606001950938285454250989")
+
+    // ── Bytes-in / bytes-out facade for stealth-address use ───────────
+
+    /**
+     * Add two compressed Ed25519 points. Both inputs must be 32-byte
+     * compressed encodings; output is the 32-byte compressed encoding of
+     * `P + Q`. Returns null if either input is not a valid curve point.
+     */
+    internal fun addPointsBytes(pBytes: ByteArray, qBytes: ByteArray): ByteArray? {
+        val p = decodePoint(pBytes) ?: return null
+        val q = decodePoint(qBytes) ?: return null
+        return encodePoint(pointAdd(p, q))
+    }
+
+    /**
+     * Compute `scalar · P` for a compressed-encoded point [pointBytes].
+     * Returns the 32-byte compressed encoding of the result, or null if
+     * [pointBytes] is not a valid curve point.
+     *
+     * @param scalar Big-endian-conceptually integer; we reduce it mod
+     *   the curve order L to keep within the prime-order subgroup.
+     */
+    internal fun scalarMultiplyBytes(scalar: BigInteger, pointBytes: ByteArray): ByteArray? {
+        val p = decodePoint(pointBytes) ?: return null
+        // Reduce scalar mod L so the result is canonical for the prime-order subgroup.
+        val k = scalar.mod(ORDER_L)
+        return encodePoint(scalarMultiply(k, p))
+    }
+
+    /** `scalar · G` where G is the Ed25519 base point. Always succeeds. */
+    internal fun scalarMultiplyBaseBytes(scalar: BigInteger): ByteArray {
+        val k = scalar.mod(ORDER_L)
+        return encodePoint(scalarMultiply(k, B))
+    }
+
     /**
      * RFC 8032 §5.1.5. Derives the 32-byte Ed25519 public key from a
      * 32-byte secret seed.
@@ -230,5 +267,58 @@ internal object Ed25519Derive {
             out[i] = be[srcStart + srcLen - 1 - i]
         }
         return out
+    }
+
+    /**
+     * Decode a 32-byte compressed Ed25519 point to extended-projective form.
+     *
+     * Per RFC 8032 §5.1.3:
+     *   1. Read y as little-endian (top bit of last byte = sign of x).
+     *   2. Solve for x² = (y² − 1) / (d·y² + 1) mod p.
+     *   3. Compute x as the modular sqrt; pick sign per the encoded sign bit.
+     *
+     * Returns null if the bytes don't decode to a valid curve point
+     * (non-canonical y >= p, no sqrt for x², or sign bit applied to x = 0).
+     */
+    private fun decodePoint(bytes: ByteArray): ExtendedPoint? {
+        if (bytes.size != 32) return null
+        // Extract sign bit, mask it off to recover canonical y.
+        val signBit = (bytes[31].toInt() and 0x80) ushr 7
+        val yBytes = bytes.copyOf().also { it[31] = (it[31].toInt() and 0x7F).toByte() }
+        val y = leToBigInt(yBytes)
+        if (y >= P) return null
+
+        // x² = (y² − 1) / (d·y² + 1)
+        val ySq = fSqr(y)
+        val u = fSub(ySq, BigInteger.ONE)
+        val v = fAdd(fMul(D, ySq), BigInteger.ONE)
+        val xSq = fMul(u, fInv(v))
+
+        // Modular sqrt: x = (xSq)^((p+3)/8) is a candidate; check x² ≡ xSq.
+        // If x² ≡ −xSq, multiply by the sqrt of −1.
+        val candidate = xSq.modPow(P.add(BigInteger.valueOf(3)).shiftRight(3), P)
+        var x = candidate
+        val xSqCheck = fSqr(x)
+        if (xSqCheck != xSq) {
+            // Multiply by sqrt(-1) = 2^((p-1)/4) mod p
+            val sqrtMinus1 = BigInteger.TWO.modPow(P.subtract(BigInteger.ONE).shiftRight(2), P)
+            x = fMul(x, sqrtMinus1)
+            if (fSqr(x) != xSq) return null // genuinely no sqrt — point is invalid
+        }
+
+        // The two candidates for x are (x, p − x). Pick by sign bit.
+        if (signBit == 1) {
+            if (x.signum() == 0) return null // sign bit set but x = 0 is malformed
+            if (!x.testBit(0)) x = fNeg(x)   // need odd x
+        } else {
+            if (x.testBit(0)) x = fNeg(x)    // need even x
+        }
+
+        return ExtendedPoint(
+            x = x,
+            y = y,
+            z = BigInteger.ONE,
+            t = fMul(x, y)
+        )
     }
 }

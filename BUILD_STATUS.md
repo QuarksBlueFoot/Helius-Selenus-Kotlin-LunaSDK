@@ -18,10 +18,20 @@
   BYO-transport interface for Yellowstone-compatible gRPC streams (so the
   SDK stays Kotlin-only — no protobuf code-gen pipeline forced on consumers).
 - **`:luna-keys`** *(NEW)* — Pure-JVM Solana key utilities. `SolanaKeypair`
-  (generate / makeKeypairs / fromSolanaKeystoreBytes / sign / verify) using
-  JDK 17 native Ed25519. `Base58` codec. `SolanaAddress` with on-curve
-  validation that distinguishes wallets from PDAs (a strict superset of
-  Helius Rust SDK's `is_valid_solana_address`). No Bouncy Castle dep.
+  (generate / makeKeypairs / fromSecretSeed / fromSolanaKeystoreBytes / sign /
+  verify) using JDK 17 native Ed25519 + a real RFC 8032 §5.1.5 seed-derivation
+  implementation. `Base58` codec. `SolanaAddress` with on-curve validation
+  that distinguishes wallets from PDAs (a strict superset of Helius Rust
+  SDK's `is_valid_solana_address`). `Slip10` for BIP-39/SLIP-0010 hierarchical
+  deterministic wallet derivation along Phantom-compatible
+  `m/44'/501'/n'/0'` paths (validated against SLIP-0010 official Ed25519
+  test vectors). `X25519` for RFC 7748 ECDH using JDK XDH (constant-time)
+  plus Ed25519↔Curve25519 birational conversion so two Solana wallet
+  holders can do ECDH without an extra key exchange. `StealthAddress` —
+  Monero-style dual-key stealth address protocol (DKSAP) adapted for
+  Ed25519/Solana, with `MetaAddress`/`derive`/`scan` API and 9 contract
+  tests proving the recovered spending scalar can sign for the stealth
+  address (`spendingScalar·G == stealthAddress`). No Bouncy Castle dep.
 - **`:luna-solana-pay`** *(NEW)* — Type-safe Solana Pay spec implementation.
   `TransferRequest` (URI built client-side) + `TransactionRequest` (server
   signs). Lossless `BigDecimal`-based amount math, multi-reference support
@@ -56,7 +66,7 @@
 | `:luna-enhanced-tx` | shipped | Parsed transaction REST |
 | `:luna-jupiter` | shipped | Jupiter swap, trigger, recurring |
 | `:luna-analytics` | shipped | Cross-cutting analytics & dashboards |
-| `:luna-privacy` | **declared, source not extracted** | See Phase 2 status |
+| `:luna-privacy` | **3 of 16 classes extracted (v5.7.3)** | PrivateBroadcastApi, RpcRotationApi, FingerprintObfuscationApi shipped; 13 still in monolith |
 | `:luna-innovations` | **declared, source not extracted** | See Phase 2 status |
 | `:luna-wallet` | **NEW v5.7** | Helius Wallet API (Beta) |
 | `:luna-laserstream` | **NEW v5.7** | LaserStream + Atlas WS |
@@ -115,17 +125,45 @@ constraints that change the plan:
    for personal-device wallet keygen, not safe for HSM/co-resident threat
    models. `SolanaKeypair.fromSecretSeed(32bytes)` now works.
 
+✅ **iris-sdk Whisper rewrite** — `IrisWhisperNamespace` v1 (mock crypto:
+   string-reverse "AES" + 4-char-concat "ECDH") replaced with real
+   AES-GCM-256 + HKDF-style key derivation + PBKDF2 passphrase derivation.
+   Wire format: `whisper:v2:base64url(nonce||ciphertext||tag)`. v1 payloads
+   now throw `IrisWhisperVersionException` so they can't be silently
+   accepted. 18 contract tests covering round-trip, GCM tag mismatch,
+   tampered ciphertext, truncation, v1 rejection, key length validation,
+   unicode. Used JDK 17 native AES-GCM / PBKDF2-HMAC / HMAC-SHA256 — no
+   Bouncy Castle dep added.
+
+✅ **iris-sdk PrivacyNamespace.generateStealthAddress fully implemented**
+   using the new `xyz.selenus.luna.keys.StealthAddress` toolkit (DKSAP over
+   Ed25519/X25519). Companion `scanStealthAddress` recipient-side method
+   added. The fail-loud `IrisStealthAddressNotImplementedError` removed.
+   Same scheme implemented in TypeScript for `luna-sdk-react-native` using
+   `@noble/curves` + `@noble/hashes` — interoperable bit-for-bit with the
+   JVM side (same domain separator `luna-stealth-v1`).
+
+✅ **In-place monolith hardening (no extraction needed)** — fixed shim-vs-
+   response bug at LunaHeliusClient.kt:11623 (`_enhanced.result?.jsonArray`
+   was referencing the migration shim, not the response — silently returned
+   no transactions for years). Swept every `.random()` call in the monolith
+   to `.secureRandom()` (using `xyz.selenus.luna.crypto.SecureRng`); zero
+   `.random()` or `Math.random()` calls remain. Migration shim KDoc updated
+   to "PERMANENT — backs stay-in-core classes" so future readers don't try
+   to delete it.
+
 Still open:
 
-- Replace `iris-sdk` mock crypto (`IrisWhisperNamespace` "Mock AES" / "Mock
-  ECDH", `IrisPrivacy` fake ed25519, `PrivacyNamespace` hardcoded scores)
-  with Bouncy Castle (`bcprov-jdk18on`).
 - Replace hashCode-based ZK placeholders (`encryptedAmountPlaceholder`,
   `rangeProofPlaceholder`, `equalityProofPlaceholder`) in SPL Confidential
   Transfer planning with real ElGamal + range proofs.
 - Replace the placeholder `startsWith("[ENCRYPTED:")` assertions in
   `Phase1PrivacyInnovationsTest` with contract tests
   (`decrypt(encrypt(m)) == m`; `verifyProof(p) == true`).
+- `IrisPaymentLinks.kt`: `mockSignature = "sig_claim_${...}"` — needs to
+  return the actual on-chain signature once the claim path is wired.
+- React Native `StealthAddressApi` (#11) and Iris `generateStealthAddress`
+  (#19) share a common need for Ed25519→X25519 conversion.
 
 ## Build configuration
 
@@ -153,7 +191,27 @@ Still open:
 
 ---
 
+**Cycle resolution (v5.7.2 ✅)**: Both Gradle cycles that blocked extraction
+are now eliminated. (1) PrivacyPoolApi + ShieldedPatternApi switched from
+`zkCompressionExtended.getCompressedTokenAccountsByOwner` to stay-in-core
+`zk.getCompressedTokenAccountsByOwner` (identical RPC call). (2) Built a
+TransactionIntelligenceApi mirror in `:luna-analytics` with extension
+property `client.txIntelligence`; the in-monolith inner class is now a
+slim mirror (only the 2 methods that the in-monolith TransactionGraphPrivacyApi
+caller uses) until that class itself is extracted. Net luna-core code
+reduction: ~210 lines.
+
 **Next session priorities** (in order):
-1. Atomic extraction of privacy + innovations (28 classes, single-pass edit).
-2. Phase 3 SecureRandom sweep (small, mechanical — can be done in any session).
-3. Bouncy Castle crypto rewrite for iris-sdk + contract tests.
+1. Atomic extraction of privacy + innovations in 3 batches:
+   - **Batch 1 (leaves)**: ConfidentialTokenApi, FingerprintObfuscationApi,
+     RpcRotationApi, PrivateBroadcastApi, PrivateTransactionsApi,
+     AdvancedStealthApi, ReactiveStreamApi, ReactiveSubscriptionApi,
+     WebSocketEnhancedApi, LaserStreamAdvancedApi, SenderAdvancedApi,
+     ZkCompressionExtendedApi, TimeTravelApi, ConfidentialTransactionApi.
+   - **Batch 2 (single cross-call)**: WalletCorrelationApi, ZkPrivacyApi,
+     TokenLaunchApi.
+   - **Batch 3 (heavy aggregators)**: PrivacyApi, PrivacyScoreEngineApi,
+     PrivacyCombinatorApi (~1000 LOC), UniversalPrivacyApi, FundingTrackerApi,
+     StrategyEngineApi, NetworkIntelligenceApi, TransactionGraphPrivacyApi
+     (when this lands, delete the in-monolith TransactionIntelligenceApi mirror).
+2. Sign-with-raw-scalar primitive in luna-keys for stealth-address spending.

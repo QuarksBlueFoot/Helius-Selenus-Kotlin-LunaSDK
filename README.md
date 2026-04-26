@@ -229,17 +229,38 @@ Pure-JVM Solana key utilities. No Bouncy Castle — uses JDK 17 native Ed25519.
 | `SolanaAddress.parse("...")` | Syntactic check (32 bytes, base58) |
 | `SolanaAddress.parseStrict("...")` | On-curve check — distinguishes wallets from PDAs |
 | `isValidSolanaAddress(s)` | Free function matching Helius Rust SDK's `is_valid_solana_address` |
+| `Slip10.derivePhantomAccount(seed, n)` | BIP-39/SLIP-0010 derivation along `m/44'/501'/n'/0'` (Phantom-compatible) |
+| `Slip10.derivePath(seed, "m/44'/501'/0'/0'")` | General SLIP-0010 path derivation |
+| `X25519.ecdh(myScalar, theirPub)` | RFC 7748 X25519 ECDH using JDK XDH (constant-time) |
+| `X25519.ed25519PublicKeyToX25519(edPub)` | Birational map: Ed25519 pubkey → X25519 pubkey |
+| `X25519.ed25519SeedToX25519Scalar(seed)` | Birational map: Ed25519 seed → X25519 scalar |
 
 ```kotlin
 import xyz.selenus.luna.keys.SolanaKeypair
+import xyz.selenus.luna.keys.Slip10
+import xyz.selenus.luna.keys.X25519
 import xyz.selenus.luna.keys.isValidSolanaAddress
 
+// Fresh keypair from CSPRNG
 val kp = SolanaKeypair.generate()
 println("Address: ${kp.publicKeyBase58}")
 val sig = kp.sign("hello".toByteArray())
 require(kp.verify("hello".toByteArray(), sig))
 
 require(isValidSolanaAddress("HXsKP7wrBWaQ8T2Vtjry3Nj3oUgwYcqq9vrHDM12G664"))
+
+// Mnemonic-import: BIP-39 seed → Phantom-compatible Solana account
+// (use any BIP-39 library to convert mnemonic → seed bytes)
+val seed: ByteArray = bip39SeedFromMnemonic("twelve word phrase ...")
+val account0 = Slip10.derivePhantomAccount(seed, index = 0)
+val account1 = Slip10.derivePhantomAccount(seed, index = 1)
+
+// X25519 ECDH between two Solana wallets — for encrypted memos / DMs
+val alice = SolanaKeypair.generate()
+val bob = SolanaKeypair.generate()
+val (aliceX, _) = X25519.ed25519KeypairToX25519(alice.secretKeyBytes, alice.publicKeyBytes)
+val bobXPub = X25519.ed25519PublicKeyToX25519(bob.publicKeyBytes)
+val sharedSecret = X25519.ecdh(aliceX, bobXPub) // 32 bytes — feed to a KDF
 ```
 
 ### Solana Pay — `xyz.selenus.luna.solanapay` *(NEW v5.7)*

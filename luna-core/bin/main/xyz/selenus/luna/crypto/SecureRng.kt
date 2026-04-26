@@ -119,6 +119,13 @@ fun CharSequence.secureRandom(): Char {
     return this[SecureRng.nextInt(length)]
 }
 
+/** Cryptographically-secure analogue of `CharRange.random()`, inclusive both ends. */
+fun CharRange.secureRandom(): Char {
+    require(!isEmpty()) { "CharRange must not be empty" }
+    val span = last.code - first.code + 1
+    return (first.code + SecureRng.nextInt(span)).toChar()
+}
+
 /** Cryptographically-secure analogue of `Array<T>.random()`. */
 fun <T> Array<T>.secureRandom(): T {
     require(isNotEmpty()) { "Array must not be empty" }

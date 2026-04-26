@@ -226,4 +226,62 @@ class IrisWhisperTest {
 
         assertEquals(message, recovered)
     }
+
+    // ── End-to-end ECDH between two Solana wallet keypairs ──────────
+
+    @Test fun `Alice and Bob derive the same Whisper key from each other's wallet`() {
+        val alice = xyz.selenus.luna.keys.SolanaKeypair.generate()
+        val bob = xyz.selenus.luna.keys.SolanaKeypair.generate()
+
+        // Alice computes from her seed + Bob's pubkey
+        val aliceKey = IrisWhisperNamespace.deriveKeyFromWallets(
+            myKeypair = alice,
+            theirPublicKeyBytes = bob.publicKeyBytes
+        )
+        // Bob computes from his seed + Alice's pubkey
+        val bobKey = IrisWhisperNamespace.deriveKeyFromWallets(
+            myKeypair = bob,
+            theirPublicKeyBytes = alice.publicKeyBytes
+        )
+
+        assertEquals(32, aliceKey.size)
+        assertTrue(
+            aliceKey.contentEquals(bobKey),
+            "Whisper key derivation broken — Alice and Bob arrived at different keys"
+        )
+    }
+
+    @Test fun `wallet-pair derived key encrypts and decrypts a memo end-to-end`() = runBlocking {
+        val whisper = whisperApi()
+        val alice = xyz.selenus.luna.keys.SolanaKeypair.generate()
+        val bob = xyz.selenus.luna.keys.SolanaKeypair.generate()
+
+        val aliceKey = IrisWhisperNamespace.deriveKeyFromWallets(alice, bob.publicKeyBytes)
+        val bobKey = IrisWhisperNamespace.deriveKeyFromWallets(bob, alice.publicKeyBytes)
+
+        // Alice encrypts → Bob decrypts using the symmetric ECDH-derived key
+        val message = "Bluefoot Booby NFT proceeds: 25.5 SOL → Galápagos"
+        val memo = whisper.createPrivateMemo(message, aliceKey)
+        val recovered = whisper.decryptMemo(memo.encryptedPayload, bobKey)
+
+        assertEquals(message, recovered)
+    }
+
+    @Test fun `wallet-pair derivation is context-bound`() {
+        val alice = xyz.selenus.luna.keys.SolanaKeypair.generate()
+        val bob = xyz.selenus.luna.keys.SolanaKeypair.generate()
+
+        val keyChat = IrisWhisperNamespace.deriveKeyFromWallets(alice, bob.publicKeyBytes, context = "chat")
+        val keyPayment = IrisWhisperNamespace.deriveKeyFromWallets(alice, bob.publicKeyBytes, context = "payment")
+
+        assertTrue(!keyChat.contentEquals(keyPayment),
+            "context binding broken — distinct contexts produced same key")
+    }
+
+    @Test fun `wallet-pair derivation rejects malformed pubkey`() {
+        val alice = xyz.selenus.luna.keys.SolanaKeypair.generate()
+        assertFailsWith<IllegalArgumentException> {
+            IrisWhisperNamespace.deriveKeyFromWallets(alice, ByteArray(31)) // wrong length
+        }
+    }
 }

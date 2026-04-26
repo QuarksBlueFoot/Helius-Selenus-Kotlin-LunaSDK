@@ -37,6 +37,12 @@ dependencies {
     implementation("io.grpc:grpc-protobuf:1.78.0")
     implementation("com.google.protobuf:protobuf-kotlin:4.32.0")
     
+    // luna-keys for X25519 ECDH + Ed25519 keypair primitives.
+    // Pulled in for IrisWhisperNamespace.deriveKeyFromWallets() which does
+    // real X25519 ECDH between two Solana wallet keypairs (replacing the
+    // old "supply your own shared secret" surface with a one-shot helper).
+    implementation(project(":luna-keys"))
+
     // Kotlin Standard Library
     implementation(kotlin("stdlib"))
 

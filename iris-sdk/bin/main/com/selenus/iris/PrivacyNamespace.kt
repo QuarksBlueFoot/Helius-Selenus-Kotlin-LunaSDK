@@ -3,7 +3,6 @@ package com.selenus.iris
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import kotlin.math.min
-import kotlin.random.Random
 
 /**
  * # Privacy Namespace
@@ -333,7 +332,7 @@ class PrivacyNamespace internal constructor(private val client: IrisQuickNodeCli
         
         for (i in 1..hopCount) {
             // Generate intermediate address (in production, these would be user-controlled)
-            val intermediateAddress = if (i == hopCount) toAddress else generateRandomPublicKey()
+            val intermediateAddress = if (i == hopCount) toAddress else generatePlaceholderAddress()
             
             // Calculate amount with slight variation for obfuscation
             val hopAmount = if (i == hopCount) {
@@ -344,8 +343,10 @@ class PrivacyNamespace internal constructor(private val client: IrisQuickNodeCli
                 remainingAmount - estimatedFee
             }
             
-            // Random delay between hops
-            val delay = Random.nextInt(minDelaySeconds, maxDelaySeconds + 1)
+            // Random delay between hops. Uses SecureRandom so the suggested
+            // schedule is unpredictable — defends against an observer who
+            // sees the route plan being inferred from the SDK's PRNG state.
+            val delay = java.security.SecureRandom().nextInt(maxDelaySeconds - minDelaySeconds + 1) + minDelaySeconds
             
             routes.add(PrivacyRoute(
                 hopNumber = i,
@@ -502,4 +503,52 @@ class PrivacyNamespace internal constructor(private val client: IrisQuickNodeCli
     
     private fun ByteArray.toBase58(): String {
         val alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-  
+        var num = java.math.BigInteger(1, this)
+        val sb = StringBuilder()
+        val base = java.math.BigInteger.valueOf(58)
+        
+        while (num > java.math.BigInteger.ZERO) {
+            val (quotient, remainder) = num.divideAndRemainder(base)
+            sb.append(alphabet[remainder.toInt()])
+            num = quotient
+        }
+        
+        // Add leading zeros
+        for (byte in this) {
+            if (byte.toInt() == 0) sb.append('1')
+            else break
+        }
+        
+        return sb.reverse().toString()
+    }
+}
+
+/**
+ * Result of a mixed transaction via JITO.
+ */
+data class MixedTransactionResult(
+    val signature: String,
+    val bundled: Boolean,
+    val mixCount: Int,
+    val tipPaid: Double,
+    val privacyGain: Int
+)
+
+/**
+ * Thrown when a privacy-namespace API would otherwise need to return a fake
+ * stealth-address keypair built from a non-cryptographic mock (the v5.6
+ * implementation generated keypairs from `kotlin.random.Random` and a
+ * `String.hashCode`-based "shared secret"). Failing loud is the only
+ * acceptable behaviour until proper Ed25519 → X25519 birational mapping
+ * + ECDH + hash-to-curve are implemented. See
+ * [PrivacyNamespace.generateStealthAddress] KDoc for the migration plan.
+ */
+class IrisStealthAddressNotImplementedError : UnsupportedOperationException(
+    "[Iris SDK] PrivacyNamespace.generateStealthAddress is not implemented. " +
+        "The previous implementation generated keypairs from kotlin.random.Random " +
+        "and used String.hashCode() as a 'shared secret' — anyone shipping that " +
+        "would have catastrophically broken privacy. Failing loud until proper " +
+        "Ed25519→X25519 + ECDH + hash-to-curve are implemented. See KDoc on " +
+        "generateStealthAddress for the implementation plan, or use luna-keys " +
+        "SolanaKeypair for real keypair operations."
+)

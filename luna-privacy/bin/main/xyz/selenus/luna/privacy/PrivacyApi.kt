@@ -1,21 +1,20 @@
-// Phase 2 Phase 2 monolith-split placeholder.
+// Phase 2 monolith-split status (v5.7.3 — extraction in progress, in batches):
 //
-// This module's source files (PrivacyApi, ZkPrivacyApi, ConfidentialTransactionApi,
-// StealthAddressApi, PrivacyPoolApi, TransactionGraphPrivacyApi, ShieldedPatternApi,
-// PrivacyScoreEngineApi, ConfidentialTokenApi, PrivateBroadcastApi,
-// FingerprintObfuscationApi, RpcRotationApi, PrivacyCombinatorApi,
-// AdvancedStealthApi, PrivateTransactionsApi, UniversalPrivacyApi) have NOT
-// yet been extracted from luna-core/LunaHeliusClient.kt.
+// EXTRACTED to this module so far:
+//   ✅ PrivateBroadcastApi      (file: PrivateBroadcastApi.kt)
+//   ✅ RpcRotationApi           (file: RpcRotationApi.kt)
+//   ✅ FingerprintObfuscationApi (file: FingerprintObfuscationApi.kt)
 //
-// The extraction must be done as one atomic transaction across both
-// :luna-privacy and :luna-innovations because of cyclic call graphs:
-// - WalletCorrelationApi (innovations) calls client.privacy.analyzeAddressLinkage
-// - ZkPrivacyApi (privacy) calls client.privacy.analyzeWalletPrivacy
-// - StrategyEngineApi (innovations) calls client.jupiter.getQuote
-// - many more
+// STILL IN MONOLITH (luna-core/LunaHeliusClient.kt):
+//   PrivacyApi, ZkPrivacyApi, ConfidentialTransactionApi, StealthAddressApi,
+//   PrivacyPoolApi, TransactionGraphPrivacyApi, ShieldedPatternApi,
+//   PrivacyScoreEngineApi, ConfidentialTokenApi, PrivacyCombinatorApi,
+//   AdvancedStealthApi, PrivateTransactionsApi, UniversalPrivacyApi.
 //
-// A partial extraction (e.g. PrivacyApi only) leaves the monolith with broken
-// references because in-monolith inner classes still reference the removed
-// `privacy.xxx` field. See README and Phase 2 plan for the full extraction
-// schedule.
+// The remaining classes form a cross-call graph (PrivacyScoreEngineApi calls
+// 5 other privacy classes, PrivacyCombinatorApi calls 8+ others, etc.) so
+// the next batch should extract them as a coherent group. The 2 historical
+// Gradle cycles (ZkCompressionExtended via PrivacyPoolApi/ShieldedPatternApi,
+// and TransactionIntelligenceApi via TransactionGraphPrivacyApi) are
+// resolved as of v5.7.2 — see BUILD_STATUS.md for the resolution.
 package xyz.selenus.luna.privacy
