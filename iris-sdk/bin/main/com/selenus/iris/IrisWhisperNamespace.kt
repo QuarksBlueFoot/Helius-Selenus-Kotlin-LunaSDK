@@ -3,6 +3,8 @@ package com.selenus.iris
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import xyz.selenus.luna.keys.SolanaKeypair
+import xyz.selenus.luna.keys.X25519
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
@@ -216,6 +218,43 @@ class IrisWhisperNamespace internal constructor(@Suppress("unused") private val 
             mac.update(context.toByteArray(Charsets.UTF_8))
             mac.update(0x01)
             return mac.doFinal().copyOfRange(0, AES_KEY_BYTES)
+        }
+
+        /**
+         * One-shot helper: derive a 32-byte AES-256 Whisper key from a Solana
+         * wallet keypair (yours) plus the recipient's Solana wallet pubkey.
+         *
+         * Internally:
+         *   1. Convert your Ed25519 seed to its matching X25519 scalar.
+         *   2. Convert the recipient's Ed25519 pubkey to its matching X25519
+         *      pubkey via the birational equivalence.
+         *   3. Run X25519 ECDH (constant-time, JDK native).
+         *   4. HKDF-Expand the shared secret to a 32-byte AES key bound to
+         *      a Whisper-specific context string.
+         *
+         * The result is identical to what the recipient computes when they
+         * run the symmetric call with their seed and your pubkey — so two
+         * Solana wallet holders can encrypt + decrypt memos to each other
+         * with no extra key exchange.
+         *
+         * @param myKeypair Your full keypair (you must hold the seed).
+         * @param theirPublicKeyBytes Recipient's 32-byte Ed25519 pubkey.
+         * @param context Optional domain-separation tag — change it to
+         *   derive distinct keys for distinct purposes (chat vs payment
+         *   channel vs notes) under the same wallet pair.
+         */
+        fun deriveKeyFromWallets(
+            myKeypair: SolanaKeypair,
+            theirPublicKeyBytes: ByteArray,
+            context: String = "iris-whisper-v2"
+        ): ByteArray {
+            require(theirPublicKeyBytes.size == 32) {
+                "recipient public key must be 32 bytes (got ${theirPublicKeyBytes.size})"
+            }
+            val myXScalar = X25519.ed25519SeedToX25519Scalar(myKeypair.secretKeyBytes)
+            val theirXPub = X25519.ed25519PublicKeyToX25519(theirPublicKeyBytes)
+            val sharedSecret = X25519.ecdh(myXScalar, theirXPub)
+            return deriveKeyFromX25519(sharedSecret, context)
         }
     }
 }

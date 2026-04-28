@@ -217,32 +217,78 @@ class PrivacyNamespace internal constructor(private val client: IrisQuickNodeCli
      * @return Stealth address details for sending funds
      */
     /**
-     * Generate a stealth address for receiving funds privately.
+     * Generate a one-time stealth address that pays to a recipient identified
+     * by their meta-address (`spendingPubkey, viewingPubkey`).
      *
-     * **NOT IMPLEMENTED.** The previous implementation used:
-     *  - `kotlin.random.Random` for "ephemeral keypair" (predictable from a few outputs)
-     *  - `String.hashCode()` for "shared secret" (32-bit collisions are trivial)
-     *  - `secret.toByteArray().take(32)` for "stealth address" (no curve operations)
+     * Implements the Monero-style Dual-Key Stealth Address Protocol (DKSAP)
+     * adapted for Ed25519 / Solana — see
+     * `xyz.selenus.luna.keys.StealthAddress` for the protocol math.
      *
-     * Anyone who shipped a stealth address from that implementation would
-     * have catastrophically broken privacy — the "stealth" address would be
-     * trivially recoverable. Rather than ship that, we fail loud.
+     * **Replaces the v5.6 stub** that used `kotlin.random.Random` for the
+     * ephemeral keypair and `String.hashCode()` for the "shared secret",
+     * producing trivially-recoverable "stealth" addresses. The new
+     * implementation uses real X25519 ECDH (constant-time JDK 17 native)
+     * and Ed25519 point arithmetic.
      *
-     * Proper implementation requires:
-     *  1. Ed25519 → X25519 birational mapping (we have Ed25519 derivation in
-     *     luna-keys; X25519 conversion is a separate ~50 LOC effort).
-     *  2. X25519 ECDH between ephemeral key and recipient viewing key.
-     *  3. Hash-to-curve derivation of the stealth address point.
-     *
-     * Tracked as a follow-up. For now, callers should use
-     * `xyz.selenus.luna.keys.SolanaKeypair.fromSecretSeed` for real keypairs
-     * and integrate with a vetted stealth-address library when receiving
-     * private funds.
+     * @param recipientSpendingPubkey base58-encoded 32-byte Ed25519 spending pubkey
+     * @param recipientViewingPubkey  base58-encoded 32-byte Ed25519 viewing pubkey
+     * @return [StealthAddress] with the one-time receiving address, the
+     *   ephemeral pubkey to publish on-chain, and the encrypted spending
+     *   key (recipient-supplied — Iris does not hold the recipient's
+     *   spending secret).
      */
-    @Suppress("UNUSED_PARAMETER")
     suspend fun generateStealthAddress(
-        recipientViewingKey: String
-    ): StealthAddress = throw IrisStealthAddressNotImplementedError()
+        recipientSpendingPubkey: String,
+        recipientViewingPubkey: String
+    ): StealthAddress {
+        val spendingBytes = xyz.selenus.luna.keys.Base58.decode(recipientSpendingPubkey)
+        require(spendingBytes.size == 32) {
+            "recipientSpendingPubkey must decode to 32 bytes (got ${spendingBytes.size})"
+        }
+        val viewingBytes = xyz.selenus.luna.keys.Base58.decode(recipientViewingPubkey)
+        require(viewingBytes.size == 32) {
+            "recipientViewingPubkey must decode to 32 bytes (got ${viewingBytes.size})"
+        }
+
+        val meta = xyz.selenus.luna.keys.StealthAddress.MetaAddress(
+            spendingPublicKey = spendingBytes,
+            viewingPublicKey = viewingBytes
+        )
+        val envelope = xyz.selenus.luna.keys.StealthAddress.derive(meta)
+
+        return StealthAddress(
+            ephemeralPublicKey = xyz.selenus.luna.keys.Base58.encode(envelope.ephemeralPublicKey),
+            stealthAddress = xyz.selenus.luna.keys.Base58.encode(envelope.stealthAddress),
+            viewingKey = recipientViewingPubkey,
+            spendingKeyEncrypted = "" // not exposed by this API; recipient holds it
+        )
+    }
+
+    /**
+     * Recipient-side: scan an observed `(ephemeralPubkey, recipientAddress)`
+     * pair to determine if it was a stealth payment to you, and recover the
+     * scalar required to spend from that address.
+     *
+     * @param viewingSecretBase58 your 32-byte viewing seed (base58-encoded)
+     * @param spendingSecretBase58 your 32-byte spending seed (base58-encoded)
+     * @param ephemeralPublicKeyBase58 the ephemeral pubkey from the on-chain protocol
+     * @param observedAddressBase58 the address that received funds
+     * @return the recovered spending scalar (base58, 32 bytes) when matched, else null
+     */
+    suspend fun scanStealthAddress(
+        viewingSecretBase58: String,
+        spendingSecretBase58: String,
+        ephemeralPublicKeyBase58: String,
+        observedAddressBase58: String
+    ): String? {
+        val match = xyz.selenus.luna.keys.StealthAddress.scan(
+            viewingSecretSeed = xyz.selenus.luna.keys.Base58.decode(viewingSecretBase58),
+            spendingSecretSeed = xyz.selenus.luna.keys.Base58.decode(spendingSecretBase58),
+            ephemeralPublicKey = xyz.selenus.luna.keys.Base58.decode(ephemeralPublicKeyBase58),
+            observedRecipientAddress = xyz.selenus.luna.keys.Base58.decode(observedAddressBase58)
+        ) ?: return null
+        return xyz.selenus.luna.keys.Base58.encode(match.spendingScalar)
+    }
 
     /**
      * Internal helper: generate a syntactically valid 32-byte placeholder
@@ -534,21 +580,3 @@ data class MixedTransactionResult(
     val privacyGain: Int
 )
 
-/**
- * Thrown when a privacy-namespace API would otherwise need to return a fake
- * stealth-address keypair built from a non-cryptographic mock (the v5.6
- * implementation generated keypairs from `kotlin.random.Random` and a
- * `String.hashCode`-based "shared secret"). Failing loud is the only
- * acceptable behaviour until proper Ed25519 → X25519 birational mapping
- * + ECDH + hash-to-curve are implemented. See
- * [PrivacyNamespace.generateStealthAddress] KDoc for the migration plan.
- */
-class IrisStealthAddressNotImplementedError : UnsupportedOperationException(
-    "[Iris SDK] PrivacyNamespace.generateStealthAddress is not implemented. " +
-        "The previous implementation generated keypairs from kotlin.random.Random " +
-        "and used String.hashCode() as a 'shared secret' — anyone shipping that " +
-        "would have catastrophically broken privacy. Failing loud until proper " +
-        "Ed25519→X25519 + ECDH + hash-to-curve are implemented. See KDoc on " +
-        "generateStealthAddress for the implementation plan, or use luna-keys " +
-        "SolanaKeypair for real keypair operations."
-)
